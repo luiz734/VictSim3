@@ -34,6 +34,8 @@ class Explorer(AbstAgent):
 
         super().__init__(env, config_file)
         self.walk_stack = Stack()  # a stack to store the movements
+        # We need a different stack to store coords instead of dx,dy
+        self.dfs_stack = Stack()  # a stack for the DFS backtracking
         self.set_state(VS.ACTIVE)  # explorer is active since the begin
         self.resc = resc           # reference to the rescuer agent
         self.x = 0                 # current x position relative to the origin 0
@@ -70,14 +72,15 @@ class Explorer(AbstAgent):
                 available_neighbors.append((dx, dy))
 
         if len(available_neighbors) > 0:
-            self.walk_stack.push((self.x, self.y))
+            self.dfs_stack.push((self.x, self.y))
             # Without random they all go the same path
             return random.choice(available_neighbors)
 
         else:
-            target_x, target_y = self.walk_stack.pop()
+            if self.dfs_stack.is_empty():
+                return 0, 0
+            target_x, target_y = self.dfs_stack.pop()
             return target_x - self.x, target_y - self.y
-
 
     def explore(self):
         # get an random increment for x and y       
