@@ -6,9 +6,12 @@
 
 
 import random
+import sys
+
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 from map import Map
+import networkx as nx
 
 class Stack:
     def __init__(self):
@@ -34,8 +37,11 @@ class Explorer(AbstAgent):
 
         super().__init__(env, config_file)
         self.walk_stack = Stack()  # a stack to store the movements
+
         # We need a different stack to store coords instead of dx,dy
         self.dfs_stack = Stack()  # a stack for the DFS backtracking
+        self.return_path = None
+
         self.set_state(VS.ACTIVE)  # explorer is active since the begin
         self.resc = resc           # reference to the rescuer agent
         self.x = 0                 # current x position relative to the origin 0
@@ -103,7 +109,7 @@ class Explorer(AbstAgent):
         if result == VS.EXECUTED:
             # puts the visited position in a stack. When the batt is low, 
             # the explorer unstack each visited position to come back to the base
-            self.walk_stack.push((dx, dy))
+            # self.walk_stack.push((dx, dy))
 
             # update the agent's position relative to the origin of 
             # the coordinate system used by the agents
@@ -131,26 +137,82 @@ class Explorer(AbstAgent):
 
         return
 
-    def come_back(self):
-        """ Procedure to return to the base: pops the walk_stack to follow
-        the exploration path in the opposite direction """
-  
-        dx, dy = self.walk_stack.pop()
-        dx = dx * -1
-        dy = dy * -1
+    def plan_Astar_path(self):
+        print(f"{self.NAME}: Planning A* path from ({self.x}, {self.y}) to (0,0)...")
+        G = nx.Graph()
+
+        # Add nodes and edges from the map
+        for coord, map_data in self.map.map_data.items():
+            (difficulty, _, actions_res) = map_data
+
+            # Add node only if it's not a wall
+            if difficulty >= VS.OBST_WALL:
+                continue
+
+            G.add_node(coord)
+
+            # Check all 8 directions for neighbors *that are also in the map*
+            for direction in range(8):
+                if actions_res[direction] == VS.CLEAR:
+                    dx, dy = Explorer.AC_INCR[direction]
+                    neighbor_coord = (coord[0] + dx, coord[1] + dy)
+
+                    if self.map.in_map(neighbor_coord):
+                        # Get neighbor's data
+                        neighbor_data = self.map.get(neighbor_coord)
+                        if not neighbor_data:
+                            continue
+
+                        neighbor_difficulty = neighbor_data[0]
+
+                        if neighbor_difficulty >= VS.OBST_WALL:
+                            continue
+
+                        # Calculate cost: average difficulty * move cost
+                        cost_multiplier = (difficulty + neighbor_difficulty) / 2
+                        move_cost = self.COST_LINE if (dx == 0 or dy == 0) else self.COST_DIAG
+                        weight = cost_multiplier * move_cost
+
+                        G.add_edge(coord, neighbor_coord, weight=weight)
+
+        def heuristic_euclidean(u, v):
+            (x1, y1) = u
+            (x2, y2) = v
+            return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+
+
+        path = nx.astar_path(G, (self.x, self.y), (0, 0), heuristic=heuristic_euclidean, weight='weight')
+
+        # Store the path (excluding the first node, which is the current position)
+        self.return_path = path[1:]
+
+    def execute_Astar_step(self):
+        if not self.return_path:
+            return
+
+        # Get the next waypoint from the A* path
+        target_x, target_y = self.return_path.pop(0)  # Get the next step
+
+        # Calculate the required move
+        dx = target_x - self.x
+        dy = target_y - self.y
 
         result = self.walk(dx, dy)
-        # Walk resulted in bumping into a wall or end of grid
+
         if result == VS.BUMPED:
-            print(f"{self.NAME}: when coming back bumped at ({self.x+dx}, {self.y+dy}) , rtime: {self.get_rtime()}")
+            # A* path led into a wall. This shouldn't happen if map is correct.
+            # We must replan, or stop.
+            print(f"{self.NAME}: BUMPED while following A* path! Stopping.")
+            self.return_path = None  # Clear path
+            self.set_state(VS.DEAD)
+            sys.exit("SHOULDNT HAPPEN")
             return
-            
-        # Walk succeded
+
         if result == VS.EXECUTED:
             # update the agent's position relative to the origin
             self.x += dx
             self.y += dy
-            #print(f"{self.NAME}: coming back at ({self.x}, {self.y}), rtime: {self.get_rtime()}")
+            # print(f"{self.NAME}: A* step to ({self.x}, {self.y}), rtime: {self.get_rtime()}")
         
     def deliberate(self) -> bool:
         """  The simulator calls this method at each cycle. 
@@ -165,18 +227,48 @@ class Explorer(AbstAgent):
             self.explore()
             return True
 
-        # Returning to the base terminates when there are no more moves to pop from the stack
-        # or when the agent reaches (0, 0) — the base position
-        if self.walk_stack.is_empty() or (self.x == 0 and self.y == 0):
-            # time to wake up the rescuer
-            # pass the walls and the victims (here, they're empty)
-            print(f"{self.NAME}: rtime {self.get_rtime()}, invoking the rescuer")
-            #input(f"{self.NAME}: type [ENTER] to proceed")
-            self.resc.go_save_victims(self.map, self.victims)
-            return False
+        # We use A* to return to base
+        # Check if we have arrived at the base (0,0)
+        if self.x == 0 and self.y == 0:
+            # We are at the base, check if we were exploring or returning
+            if self.get_state() == VS.ACTIVE:
+                # We were still exploring and time run out
+                # We are already at the base, so just shut down.
+                print(f"{self.NAME}: Time up, already at base. rtime {self.get_rtime()}, invoking rescuer.")
+                self.resc.go_save_victims(self.map, self.victims)
+                self.set_state(VS.ENDED)  # VS.ENDED exists
+                return False
 
-        # move to the base
-        self.come_back()
+            if self.get_state() == VS.ENDED:
+                # We have successfully returned using A* and are already done
+                return False
+
+        # Plan the A* path (only once)
+        # If we are not at the base, and time is up, and we haven't planned a path yet
+        should_plant_Astar = self.return_path is None and self.get_state() == VS.ACTIVE
+        if should_plant_Astar:
+            try:
+                self.plan_Astar_path()
+            except nx.NetworkXNoPath:
+                print(f"{self.NAME}: A* CANNOT FIND A PATH BACK TO BASE (0,0)!")
+                self.set_state(VS.DEAD)  # VS.DEAD exists
+                return False  # Agent stops
+            except Exception as e:
+                print(f"{self.NAME}: A* planning failed: {e}")
+                self.set_state(VS.DEAD)
+                return False
+
+        # Execute the next step in the A* path
+        if self.return_path is not None:
+            self.execute_Astar_step()
+
+            # Check if we *just* arrived
+            if self.x == 0 and self.y == 0:
+                print(f"{self.NAME}: A* return complete. rtime {self.get_rtime()}, invoking rescuer.")
+                self.resc.go_save_victims(self.map, self.victims)
+                self.set_state(VS.ENDED)
+                return False
+
         return True
 
 
