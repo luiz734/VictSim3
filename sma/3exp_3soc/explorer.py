@@ -59,10 +59,30 @@ class Explorer(AbstAgent):
             # Check if the corresponding position in walls_and_lim is CLEAR
             if obstacles[direction] == VS.CLEAR:
                 return Explorer.AC_INCR[direction]
-        
+
+    def get_next_position_ONLINE_DFS(self):
+        available_neighbors = []
+        obstacles = self.check_walls_and_lim()
+        for direction in range(8):
+            dx, dy = Explorer.AC_INCR[direction]
+            next_position = (self.x + dx, self.y + dy)
+            if obstacles[direction] == VS.CLEAR and not self.map.in_map(next_position):
+                available_neighbors.append((dx, dy))
+
+        if len(available_neighbors) > 0:
+            self.walk_stack.push((self.x, self.y))
+            # Without random they all go the same path
+            return random.choice(available_neighbors)
+
+        else:
+            target_x, target_y = self.walk_stack.pop()
+            return target_x - self.x, target_y - self.y
+
+
     def explore(self):
         # get an random increment for x and y       
-        dx, dy = self.get_next_position()
+        dx, dy = self.get_next_position_ONLINE_DFS()
+        # dx, dy = self.get_next_position()
 
         # Moves the explorer agent to another position
         rtime_bef = self.get_rtime()   ## get remaining batt time before the move
