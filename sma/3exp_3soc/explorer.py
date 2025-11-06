@@ -5,13 +5,14 @@
 ### exploration has gone, the explorer goes back to the base.
 
 
-import random
 import sys
 
+import networkx as nx
+
+from map import Map
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
-from map import Map
-import networkx as nx
+
 
 class Stack:
     def __init__(self):
@@ -23,6 +24,7 @@ class Stack:
     def pop(self):
         if not self.is_empty():
             return self.items.pop()
+        return None
 
     def is_empty(self):
         return len(self.items) == 0
@@ -65,20 +67,6 @@ class Explorer(AbstAgent):
         # Manually update graph and frontier for the starting position (0,0)
         self.update_graph_and_frontier((self.x, self.y), 1, self.check_walls_and_lim())
 
-    def get_next_position(self):
-        """ Randomically, gets the next position that can be explored (no wall and inside the grid)
-            There must be at least one CLEAR position in the neighborhood, otherwise it loops forever.
-        """
-        # Check the neighborhood walls and grid limits
-        obstacles = self.check_walls_and_lim()
-
-        # Loop until a CLEAR position is found
-        while True:
-            # Get a random direction
-            direction = random.randint(0, 7)
-            # Check if the corresponding position in walls_and_lim is CLEAR
-            if obstacles[direction] == VS.CLEAR:
-                return Explorer.AC_INCR[direction]
 
     def get_next_frontier_step(self):
         # If we have a path, follow it
@@ -141,39 +129,10 @@ class Explorer(AbstAgent):
                 return 0, 0
 
         except nx.NetworkXNoPath:
-            # This can happen if a frontier cell is "known" but unreachable
-            # (e.g., seen diagonally, but blocked). We remove it and try again next cycle.
-            # print(f"{self.NAME}: No path to frontier {closest_cell}. Removing from frontier.")
-            # self.frontier.remove(closest_cell)
-            # return 0, 0  # Stop for this cycle
             sys.exit("Shouldn't happen")
+
         except (nx.NodeNotFound, KeyError) as e:
-            # This is a safety check. Can happen if G is out of sync or agent is not in G.
-            print(f"{self.NAME}: A* error (NodeNotFound: {e}). Trying to recover.")
-            if closest_cell in self.frontier:
-                self.frontier.remove(closest_cell)  # Remove problematic cell
-            # If agent position is not in G, it's a critical error, but we just wait
-            return 0, 0
-
-    def get_next_position_ONLINE_DFS(self):
-        available_neighbors = []
-        obstacles = self.check_walls_and_lim()
-        for direction in range(8):
-            dx, dy = Explorer.AC_INCR[direction]
-            next_position = (self.x + dx, self.y + dy)
-            if obstacles[direction] == VS.CLEAR and not self.map.in_map(next_position):
-                available_neighbors.append((dx, dy))
-
-        if len(available_neighbors) > 0:
-            self.dfs_stack.push((self.x, self.y))
-            # Without random they all go the same path
-            return random.choice(available_neighbors)
-
-        else:
-            if self.dfs_stack.is_empty():
-                return 0, 0
-            target_x, target_y = self.dfs_stack.pop()
-            return target_x - self.x, target_y - self.y
+            sys.exit(f"Shouldn't happen: {e}")
 
     def explore(self):
         # get an random increment for x and y
@@ -294,12 +253,6 @@ class Explorer(AbstAgent):
             print(f"{self.NAME}: Base (0,0) is not in the known graph! Cannot plan return path.")
             raise nx.NetworkXNoPath
 
-        def heuristic_euclidean(u, v):
-            (x1, y1) = u
-            (x2, y2) = v
-            return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
-
-
         path = nx.astar_path(G, (self.x, self.y), (0, 0), heuristic=self.heuristic_euclidean, weight='weight')
 
         # Store the path (excluding the first node, which is the current position)
@@ -319,13 +272,8 @@ class Explorer(AbstAgent):
         result = self.walk(dx, dy)
 
         if result == VS.BUMPED:
-            # A* path led into a wall. This shouldn't happen if map is correct.
-            # We must replan, or stop.
-            print(f"{self.NAME}: BUMPED while following A* path! Stopping.")
-            self.return_path = None  # Clear path
-            self.set_state(VS.DEAD)
-            sys.exit("SHOULDNT HAPPEN")
-            return
+            sys.exit("SHOULDNT HAPPEN: bad A* implementation")
+
 
         if result == VS.EXECUTED:
             # update the agent's position relative to the origin
@@ -398,6 +346,3 @@ class Explorer(AbstAgent):
                 return False
 
         return True
-
-
-
