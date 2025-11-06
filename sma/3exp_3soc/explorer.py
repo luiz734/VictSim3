@@ -13,22 +13,6 @@ from map import Map
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 
-
-class Stack:
-    def __init__(self):
-        self.items = []
-
-    def push(self, item):
-        self.items.append(item)
-
-    def pop(self):
-        if not self.is_empty():
-            return self.items.pop()
-        return None
-
-    def is_empty(self):
-        return len(self.items) == 0
-
 # Only to make errors more readable
 class NoFrontier(Exception):
     pass
@@ -42,11 +26,8 @@ class Explorer(AbstAgent):
         """
 
         super().__init__(env, config_file)
-        self.walk_stack = Stack()  # a stack to store the movements
 
         # ---------------------------------------------------------------------------------
-        # We need a different stack to store coords instead of dx,dy
-        self.dfs_stack = Stack()    # a stack for the DFS backtracking
         self.return_path = None
         self.G = nx.Graph()         # Persistent graph of the known world
         self.frontier = set()       # Set of (x,y) tuples bordering the unknown
@@ -142,7 +123,6 @@ class Explorer(AbstAgent):
             # Exploration is complete, just wait for time to run out
             self.set_state(VS.IDLE)  # Set state to idle
             return
-        # dx, dy = self.get_next_position()
 
         # Moves the explorer agent to another position
         rtime_bef = self.get_rtime()  ## get remaining batt time before the move
@@ -150,7 +130,7 @@ class Explorer(AbstAgent):
         rtime_aft = self.get_rtime()  ## get remaining batt time after the move
 
         # Test the result of the walk action
-        # It should never bump, since get_next_position always returns a valid position...
+        # It should never bump, since always returns a valid position...
         # but for safety, let's test it anyway
         if result == VS.BUMPED:
             # update the map with the wall
@@ -167,9 +147,7 @@ class Explorer(AbstAgent):
             # If dx and dy are 0, it means we are planning or waiting.
             if dx == 0 and dy == 0:
                 return
-            # puts the visited position in a stack. When the batt is low,
-            # the explorer unstack each visited position to come back to the base
-            # self.walk_stack.push((dx, dy))
+
 
             # update the agent's position relative to the origin of 
             # the coordinate system used by the agents
