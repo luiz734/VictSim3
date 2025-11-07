@@ -29,9 +29,6 @@ class SharedEnvironmentData:
         self.explorers = []
         self.rescuers = []
         self.map_lock = threading.Lock()
-
-
-
         self.share_count = 0
 
     def add_explorer(self, e):
@@ -74,22 +71,12 @@ class SharedEnvironmentData:
                 self.create_clusters()
 
     def load_and_cluster_directly(self):
-        print("--- DEBUG MODE: Skipping simulation ---")
-        try:
-            # 1. Load the pre-saved victim data
-            with open('debug_unified_victims.pkl', 'rb') as f:
-                self.unified_victims = pickle.load(f)
-            print(f"Loaded {len(self.unified_victims)} victims from 'debug_unified_victims.pkl'")
-
-            # 2. Call create_clusters
-            self.share_count = 3
-            self.create_clusters()
-
-        except FileNotFoundError:
-            print("ERROR: 'debug_unified_victims.pkl' not found.")
-            print("You must run the simulation once (Etapa 1) to generate this file.")
-        except Exception as e:
-            print(f"ERROR loading debug data: {e}")
+        print("DEBUG MODE: Skipping simulation")
+        with open('debug_unified_victims.pkl', 'rb') as f:
+            self.unified_victims = pickle.load(f)
+        print(f"Loaded {len(self.unified_victims)} victims from 'debug_unified_victims.pkl'")
+        self.share_count = 3
+        self.create_clusters()
 
 
     def combine_maps(self):
@@ -100,97 +87,123 @@ class SharedEnvironmentData:
         assert (self.share_count == 3)
         print("Creating clusters...")
 
-        # 1. Load Classifier
+        overlap_value = self.calculate_overlap()
+        print(f"OVERLAP RESULT: {overlap_value:.4f}")
+
         classifier = None
-        try:
-            with open('model_classifier.pkl', 'rb') as f:
-                classifier = pickle.load(f)
-            print("Model 'model_classifier.pkl' loaded.")
-        except FileNotFoundError:
-            print("ERROR: 'model_classifier.pkl' not found. Aborting clustering.")
-            return
-        except Exception as e:
-            print(f"ERROR loading model: {e}. Aborting clustering.")
-            return
+        with open('model_classifier.pkl', 'rb') as f:
+            classifier = pickle.load(f)
+        print("Model loaded")
 
         if not self.unified_victims:
-            print("No unified victims to cluster.")
-            return
+            sys.exit("Missing victms data")
 
-        # 2. Process Victims and Prepare DataFrame
+        # Data used to create dataframe
         processed_data = []
+        # Map tri (0:G, 1:Y, 2:R, 3:B) to a priority score
+        # 0 (Green) -> Low Priority (1)
+        # 1 (Yellow) -> High Priority (3)
+        # 2 (Red) -> High Priority (2)
+        # 3 (Black) -> No Priority (0)
+
+        # The idea is to avoid dead or very healthy people because:
+        # They are very likelly to survive without medical assist
+        # They are very unlikely to survive even with medical assist
+        priority_map = {0: 0, 1: 3, 2: 2, 3: 1}
         for victim_seq, (coords, vital_signals) in self.unified_victims.items():
-            # Extract the 10 features for the classifier
-            vs_input = np.array(vital_signals[:10]).reshape(1, -1)
-
+            vs_input = np.array(vital_signals[1:11]).reshape(1, -1)
             tri = classifier.predict(vs_input)[0]
-
             x, y = coords
-
-            # Calculate 'distance to base' feature
+            priority = priority_map.get(tri, 0)
             dist_base = np.sqrt(x ** 2 + y ** 2)
-
             processed_data.append({
                 'id_vict': victim_seq,
                 'x': x,
                 'y': y,
                 'tri': tri,
-                'dist_base': dist_base
+                'dist_base': dist_base,
+                'priority': priority
             })
 
         if not processed_data:
-            print("No data processed for clustering.")
-            return
+            sys.exit("Missing processed_data")
 
+        # K-Means
         df = pd.DataFrame(processed_data)
-
-        # 3. Perform K-Means Clustering
-        features_for_clustering = ['tri', 'dist_base']
-
+        features_for_clustering = ['y', 'x']
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(df[features_for_clustering])
-
         k = 3
-
         kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
         df['cluster'] = kmeans.fit_predict(X_scaled)
-
         print(f"Clustering complete. {k} clusters generated.")
 
-        # 4. Generate Plot
+        # Generate Plot
         plt.figure(figsize=(10, 8))
         sns.scatterplot(data=df, x='x', y='y', hue='cluster', palette='deep', s=100, legend='full')
         plt.scatter(0, 0, marker='X', color='red', s=150, label='Base (0,0)', zorder=5)
-
-        plt.title('Victim Clustering (k=3)')
+        plt.title('Victim Clustering (k=3, by X and Y)')
         plt.xlabel('X Position')
         plt.ylabel('Y Position')
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.6)
-
         plot_filename = 'clusters_plot.png'
         plt.savefig(plot_filename)
         print(f"Clustering plot saved to '{plot_filename}'")
         plt.close()
 
-        # 5. Save Cluster Files (Task Requirement)
-        df['sobr'] = 0.0  # Placeholder as regressor is not used
+        # Victms by tri
+        plt.figure(figsize=(10, 8))
+        # Define a specific color palette for triage
+        # 0:Green, 1:Yellow, 2:Red, 3:Black
+        tri_palette = {
+            0: 'green',
+            1: 'gold',
+            2: 'red',
+            3: 'black'
+        }
+        sns.scatterplot(data=df, x='x', y='y', hue='tri', palette=tri_palette, s=100, legend='full')
+        plt.scatter(0, 0, marker='X', color='blue', s=150, label='Base (0,0)', zorder=5)
+        plt.title('Victim Triage Status (tri)')
+        plt.xlabel('X Position')
+        plt.ylabel('Y Position')
+        plt.legend(title='Triage Class')
+        plt.grid(True, linestyle='--', alpha=0.6)
+        triage_plot_filename = 'triage_status_plot.png'
+        plt.savefig(triage_plot_filename)
+        print(f"Triage status plot saved to '{triage_plot_filename}'")
+        plt.close()
 
+        # Cluster files
+        df['sobr'] = 0.0  # Placeholder as regressor is not used
         for cluster_num in range(k):
             cluster_df = df[df['cluster'] == cluster_num]
-
             if cluster_df.empty:
                 continue
-
             filename = f"cluster_{cluster_num + 1}.txt"
-
             # Format: id_vict, x, y, sobr, tri
             output_df = cluster_df[['id_vict', 'x', 'y', 'sobr', 'tri']]
-
             output_df.to_csv(filename, index=False, header=['id_vict', 'x', 'y', 'sobr', 'tri'])
-
             print(f"Cluster file saved: {filename} ({len(cluster_df)} victims)")
 
+    def calculate_overlap(self):
+        # Ve = Total unique victims
+        Ve = len(self.unified_victims)
+        if Ve == 0:
+            print("Overlap: 0 victims found.")
+            return 0.0
+
+        total_found_with_duplicates = 0
+        for i, explorer in enumerate(self.explorers):
+            Ve_n = len(explorer.victims)
+            print(f"Overlap Info: Explorer {i + 1} (Ve{i + 1}) found {Ve_n} victims")
+            total_found_with_duplicates += Ve_n
+
+        print(f"Overlap Info: Total duplicates (Ve1+V2+V3) = {total_found_with_duplicates}")
+        print(f"Overlap Info: Total unique (Ve) = {Ve}")
+        overlap = (total_found_with_duplicates / Ve) - 1
+
+        return overlap
 
 def load_agents(env, config_base_folder, num_agents):
     shrev = SharedEnvironmentData()
@@ -228,7 +241,7 @@ def main(vict_folder, env_folder, config_base_folder):
     shared_env_data = load_agents(env, config_base_folder, NUM_AGENTS)
 
     # Run the environment simulator
-    DEBUG_SKIP_SIMULATION = True
+    DEBUG_SKIP_SIMULATION = False
     # --------------------
     if DEBUG_SKIP_SIMULATION:
         shared_env_data.load_and_cluster_directly()
