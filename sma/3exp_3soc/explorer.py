@@ -143,6 +143,7 @@ class Explorer(AbstAgent):
             dx, dy = self.get_next_frontier_step()
         except NoFrontier:
             self.set_state(VS.IDLE)
+            self.shared_env.share_map()
             return
 
         # Moves the explorer agent to another position
