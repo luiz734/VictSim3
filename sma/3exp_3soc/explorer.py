@@ -48,6 +48,27 @@ class Explorer(AbstAgent):
         # Manually update graph and frontier for the starting position (0,0)
         self.update_graph_and_frontier((self.x, self.y), 1, self.check_walls_and_lim())
 
+        # >>>>>>>>>
+        # Zone-based exploration attributes
+        self.zone_min_x = float('-inf')
+        self.zone_max_x = float('inf')
+        self.zone_penalty = 10000.0  # High cost for exploring outside the zone
+
+        # Define zones based on agent name (relative to base 0,0)
+        # Assumes a 94-wide map (approx 47 radius)
+        # Zone 1 (Left): x <= -16
+        # Zone 2 (Mid): -15 <= x <= 15
+        # Zone 3 (Right): x >= 16
+
+        if "1" in self.NAME:  # Left Zone
+            self.zone_max_x = -15
+        elif "2" in self.NAME:  # Middle Zone
+            self.zone_min_x = -4
+            self.zone_max_x = 15
+        elif "3" in self.NAME:  # Right Zone
+            self.zone_min_x = 16
+        # <<<<<<<<<
+
 
     def get_next_frontier_step(self):
         # If we have a path, follow it
@@ -61,10 +82,29 @@ class Explorer(AbstAgent):
             print(f"{self.NAME}: Frontier is empty. Exploration complete.")
             raise NoFrontier()
 
-        # Find the closest frontier cell to the agent's current position
+        def cost_function(cell):
+            # Base cost is distance from agent
+            dist = self.heuristic_euclidean((self.x, self.y), cell)
+
+            cell_x = cell[0]
+            penalty = 0.0
+
+            # Calculate penalty based on distance from the allowed zone
+            # This creates a soft boundary, pulling agents to their zones
+            if cell_x < self.zone_min_x:
+                # Cell is to the left of the zone's left edge
+                # The further left, the higher the penalty for Agents 2 and 3
+                penalty = (self.zone_min_x - cell_x) * self.zone_penalty
+            elif cell_x > self.zone_max_x:
+                # Cell is to the right of the zone's right edge
+                # The further right, the higher the penalty for Agents 1 and 2
+                penalty = (cell_x - self.zone_max_x) * self.zone_penalty
+
+            return dist + penalty
+
         closest_cell = min(
             self.frontier,
-            key=lambda cell: self.heuristic_euclidean((self.x, self.y), cell)
+            key=cost_function
         )
 
         try:
@@ -267,7 +307,7 @@ class Explorer(AbstAgent):
         consumed_time = self.TLIM - self.get_rtime()
         
         # check if it is time to come back to the base      
-        if consumed_time < self.get_rtime():
+        if consumed_time < 7000:
             # continue to explore only if active
             if self.get_state() == VS.ACTIVE:
                 self.explore()
@@ -281,14 +321,14 @@ class Explorer(AbstAgent):
                 # We were still exploring and time run out
                 # We are already at the base, so just shut down.
                 print(f"{self.NAME}: Time up, already at base. rtime {self.get_rtime()}, invoking rescuer.")
-                self.resc.go_save_victims(self.map, self.victims)
+                # self.resc.go_save_victims(self.map, self.victims)
                 self.set_state(VS.ENDED)  # VS.ENDED exists
                 return False
 
             # Handle the case where the agent was IDLE (frontier empty) and time ran out
             if self.get_state() == VS.IDLE:
                 print(f"{self.NAME}: Frontier empty and time up. rtime {self.get_rtime()}, invoking rescuer.")
-                self.resc.go_save_victims(self.map, self.victims)
+                # self.resc.go_save_victims(self.map, self.victims)
                 self.set_state(VS.ENDED)
                 return False
 
