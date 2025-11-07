@@ -307,7 +307,7 @@ class Env:
                 # Asks the agent to do the next action if it is ACTIVE
                 if phy._state == VS.ACTIVE:
                     active_or_idle = True
-                    more_actions_to_do = phy.mind.deliberate()
+                    more_actions_to_do = phy.mind.deliberate
 
                     #  if cycle % 50 == 0:
                     #    print(f"ENV: cycle {cycle} {phy.mind.NAME} remaining: {phy.rtime}")

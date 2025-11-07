@@ -50,12 +50,12 @@ if __name__ == '__main__':
     print("------------------")
 
     # dataset com sinais vitais das vitimas
-    # vict_folder = os.path.join("datasets/vict/", "10v")
-    vict_folder = os.path.join("datasets/vict/", "408v")
+    vict_folder = os.path.join("datasets/vict/", "10v")
+    # vict_folder = os.path.join("datasets/vict/", "408v")
 
     # dataset do ambiente (paredes, posicao das vitimas)
-    env_folder = os.path.join("datasets/env/", "94x94_408v")
-    # env_folder = os.path.join("datasets/env/", "12x12_10v")
+    # env_folder = os.path.join("datasets/env/", "94x94_408v")
+    env_folder = os.path.join("datasets/env/", "12x12_10v")
 
     # folder das configuracoes dos agentes
     # This is now the BASE folder containing config_ag_1, config_ag_2, etc.

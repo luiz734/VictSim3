@@ -48,26 +48,19 @@ class Explorer(AbstAgent):
         # Manually update graph and frontier for the starting position (0,0)
         self.update_graph_and_frontier((self.x, self.y), 1, self.check_walls_and_lim())
 
-        # >>>>>>>>>
         # Zone-based exploration attributes
-        self.zone_min_x = float('-inf')
-        self.zone_max_x = float('inf')
+        self.zone_min_y = float('-inf')
+        self.zone_max_y = float('inf')
         self.zone_penalty = 10000.0  # High cost for exploring outside the zone
 
-        # Define zones based on agent name (relative to base 0,0)
-        # Assumes a 94-wide map (approx 47 radius)
-        # Zone 1 (Left): x <= -16
-        # Zone 2 (Mid): -15 <= x <= 15
-        # Zone 3 (Right): x >= 16
 
         if "1" in self.NAME:  # Left Zone
-            self.zone_max_x = -15
+            self.zone_max_y = -15
         elif "2" in self.NAME:  # Middle Zone
-            self.zone_min_x = -4
-            self.zone_max_x = 15
+            self.zone_min_y = -14
+            self.zone_max_y = 15
         elif "3" in self.NAME:  # Right Zone
-            self.zone_min_x = 16
-        # <<<<<<<<<
+            self.zone_min_y = 16
 
 
     def get_next_frontier_step(self):
@@ -76,29 +69,22 @@ class Explorer(AbstAgent):
             target_x, target_y = self.exploration_path.pop(0)
             return target_x - self.x, target_y - self.y
 
-        # No path. We must plan a new one.
         if not self.frontier:
-            # No more frontiers to explore
             print(f"{self.NAME}: Frontier is empty. Exploration complete.")
             raise NoFrontier()
 
         def cost_function(cell):
             # Base cost is distance from agent
             dist = self.heuristic_euclidean((self.x, self.y), cell)
-
-            cell_x = cell[0]
+            cell_y = cell[1]
             penalty = 0.0
 
             # Calculate penalty based on distance from the allowed zone
-            # This creates a soft boundary, pulling agents to their zones
-            if cell_x < self.zone_min_x:
-                # Cell is to the left of the zone's left edge
-                # The further left, the higher the penalty for Agents 2 and 3
-                penalty = (self.zone_min_x - cell_x) * self.zone_penalty
-            elif cell_x > self.zone_max_x:
-                # Cell is to the right of the zone's right edge
-                # The further right, the higher the penalty for Agents 1 and 2
-                penalty = (cell_x - self.zone_max_x) * self.zone_penalty
+            # If we start leaving our zone, the penalty increases
+            if cell_y < self.zone_min_y:
+                penalty = (self.zone_min_y - cell_y) * self.zone_penalty
+            elif cell_y > self.zone_max_y:
+                penalty = (cell_y - self.zone_max_y) * self.zone_penalty
 
             return dist + penalty
 
@@ -109,8 +95,8 @@ class Explorer(AbstAgent):
 
         try:
             # A* can only path to nodes in self.G
-            # The closest_cell is in the frontier (unknown), so it's not in G
-            # We must find the neighbor of closest_cell that in in G (a "gateway")
+            # The closest_cell is in the frontier (unknown), so it is not in G
+            # We must find the neighbor of closest_cell that in in G
             # and path to that gateway node first.
             gateway_node = None
             for direction in range(8):
@@ -119,12 +105,9 @@ class Explorer(AbstAgent):
                 neighbor_coord = (closest_cell[0] - dx, closest_cell[1] - dy)
                 if neighbor_coord in self.G:
                     gateway_node = neighbor_coord
-                    break  # Found a valid gataway
+                    break
 
             if gateway_node is None:
-                # print(f"{self.NAME}: Frontier {closest_cell} has no neighbor in G. Removing.")
-                # self.frontier.remove(closest_cell)
-                # return 0, 0
                 sys.exit("A gateway should always exists")
 
             # Plan a path from current_pos to the gateway node
@@ -132,7 +115,6 @@ class Explorer(AbstAgent):
                                  weight='weight')
 
             # Add the frontier cell itself as the final step
-            # This handles the case where we are already at the gateway_node
             if path[-1] != closest_cell:
                 path.append(closest_cell)
 
@@ -149,37 +131,27 @@ class Explorer(AbstAgent):
                 # The target cell will be processed on the next call if it's still in frontier
                 return 0, 0
 
-        except nx.NetworkXNoPath:
-            sys.exit("Shouldn't happen")
+        except nx.NetworkXNoPath as e:
+            sys.exit(f"Shouldn't happen: {e}")
 
         except (nx.NodeNotFound, KeyError) as e:
             sys.exit(f"Shouldn't happen: {e}")
 
     def explore(self):
-        # get an random increment for x and y
         try:
             dx, dy = self.get_next_frontier_step()
         except NoFrontier:
-            # Exploration is complete, just wait for time to run out
-            self.set_state(VS.IDLE)  # Set state to idle
+            self.set_state(VS.IDLE)
             return
 
         # Moves the explorer agent to another position
-        rtime_bef = self.get_rtime()  ## get remaining batt time before the move
+        rtime_bef = self.get_rtime()
         result = self.walk(dx, dy)
-        rtime_aft = self.get_rtime()  ## get remaining batt time after the move
+        rtime_aft = self.get_rtime()
 
-        # Test the result of the walk action
-        # It should never bump, since always returns a valid position...
-        # but for safety, let's test it anyway
         if result == VS.BUMPED:
-            # update the map with the wall
             self.map.add((self.x + dx, self.y + dy), VS.OBST_WALL, VS.NO_VICTIM, self.check_walls_and_lim())
-            #print(f"{self.NAME}: Wall or grid limit reached at ({self.x + dx}, {self.y + dy})")
-
-            # We bumped, so the path is invalid. Clear it.
             self.exploration_path = []
-            # Update graph/frontier with the wall info
             self.update_graph_and_frontier((self.x, self.y), self.map.get((self.x, self.y))[0],
                                            self.check_walls_and_lim())
 
@@ -188,9 +160,6 @@ class Explorer(AbstAgent):
             if dx == 0 and dy == 0:
                 return
 
-
-            # update the agent's position relative to the origin of 
-            # the coordinate system used by the agents
             self.x += dx
             self.y += dy          
 
@@ -199,8 +168,6 @@ class Explorer(AbstAgent):
             if seq != VS.NO_VICTIM:
                 vs = self.read_vital_signals()
                 self.victims[seq] = ((self.x, self.y), vs)
-                #print(f"{self.NAME} Victim found at ({self.x}, {self.y}), rtime: {self.get_rtime()}")
-                #print(f"{self.NAME} Seq: {seq} Vital signals: {vs}")
             
             # Calculates the difficulty of the visited cell
             difficulty = (rtime_bef - rtime_aft)
@@ -211,10 +178,7 @@ class Explorer(AbstAgent):
 
             # Update the map with the new cell
             self.map.add((self.x, self.y), difficulty, seq, self.check_walls_and_lim())
-
-            # Update the graph and frontier with the new cell info
             self.update_graph_and_frontier((self.x, self.y), difficulty, self.check_walls_and_lim())
-        #print(f"{self.NAME}:at ({self.x, self.y}), diffic: {difficulty:.2f} vict: {seq} rtime: {self.get_rtime()}")
 
         return
 
@@ -263,104 +227,76 @@ class Explorer(AbstAgent):
                 self.frontier.discard(neighbor_coord)
 
     def plan_Astar_path(self):
+        assert (self.return_path is None, "Path already planned")
         print(f"{self.NAME}: Planning A* path from ({self.x}, {self.y}) to (0,0)...")
-        G = self.G
-        # Add nodes and edges from the map
-        # Ensure the base (0,0) is in the graph, otherwise A* will fail
-        if (0, 0) not in G:
+        if (0, 0) not in self.G:
             print(f"{self.NAME}: Base (0,0) is not in the known graph! Cannot plan return path.")
             raise nx.NetworkXNoPath
-
-        path = nx.astar_path(G, (self.x, self.y), (0, 0), heuristic=self.heuristic_euclidean, weight='weight')
-
-        # Store the path (excluding the first node, which is the current position)
+        path = nx.astar_path(self.G, (self.x, self.y), (0, 0), heuristic=self.heuristic_euclidean, weight='weight')
+        # Skip the current position
         self.return_path = path[1:]
 
     def execute_Astar_step(self):
-        if not self.return_path:
-            return
-
-        # Get the next waypoint from the A* path
-        target_x, target_y = self.return_path.pop(0)  # Get the next step
-
-        # Calculate the required move
+        assert (self.return_path is not None, "Should not happen")
+        target_x, target_y = self.return_path.pop(0)
         dx = target_x - self.x
         dy = target_y - self.y
-
         result = self.walk(dx, dy)
 
         if result == VS.BUMPED:
-            sys.exit("SHOULDNT HAPPEN: bad A* implementation")
-
-
-        if result == VS.EXECUTED:
-            # update the agent's position relative to the origin
+            sys.exit("SHOULDN'T HAPPEN: bad A* implementation")
+        elif result == VS.EXECUTED:
             self.x += dx
             self.y += dy
-            # print(f"{self.NAME}: A* step to ({self.x}, {self.y}), rtime: {self.get_rtime()}")
 
+
+    @property
     def deliberate(self) -> bool:
         """  The simulator calls this method at each cycle. 
         Must be implemented in every agent. The agent chooses the next action.
         """
 
-        consumed_time = self.TLIM - self.get_rtime()
-        
-        # check if it is time to come back to the base      
-        if consumed_time < 7000:
-            # continue to explore only if active
-            if self.get_state() == VS.ACTIVE:
+        is_returning_to_base = not self.return_path is None
+
+        # Should we return to base?
+        cost_to_base = 0
+        try:
+            if self.x != 0 or self.y != 0:
+                cost_to_base = nx.astar_path_length(self.G,(self.x, self.y), (0, 0),heuristic=self.heuristic_euclidean, weight='weight')
+        except (nx.NetworkXNoPath, nx.NodeNotFound):
+            sys.exit("Shouldn't happen")
+
+        # Just in case or calculations are incorrect
+        SAFETY_MARGIN = 1.5
+        if not is_returning_to_base:
+            required_battery = cost_to_base * SAFETY_MARGIN
+
+            # We return if there is no battery or we are not active
+            if self.get_rtime() > required_battery and self.get_state() == VS.ACTIVE:
                 self.explore()
-            return True
+                return True
 
-        # We use A* to return to base
-        # Check if we have arrived at the base (0,0)
+        # --- RETURN TO BASE LOGIC ---
+        # We are already at the base
         if self.x == 0 and self.y == 0:
-            # We are at the base, check if we were exploring or returning
-            if self.get_state() == VS.ACTIVE:
-                # We were still exploring and time run out
-                # We are already at the base, so just shut down.
-                print(f"{self.NAME}: Time up, already at base. rtime {self.get_rtime()}, invoking rescuer.")
-                # self.resc.go_save_victims(self.map, self.victims)
-                self.set_state(VS.ENDED)  # VS.ENDED exists
-                return False
-
-            # Handle the case where the agent was IDLE (frontier empty) and time ran out
-            if self.get_state() == VS.IDLE:
-                print(f"{self.NAME}: Frontier empty and time up. rtime {self.get_rtime()}, invoking rescuer.")
-                # self.resc.go_save_victims(self.map, self.victims)
+            if self.get_state() != VS.ENDED:
                 self.set_state(VS.ENDED)
-                return False
+            return False
 
-            if self.get_state() == VS.ENDED:
-                # We have successfully returned using A* and are already done
-                return False
-
-        # Plan the A* path (only once)
-        # If we are not at the base, and time is up, and we haven't planned a path yet
-        # Also plan if we were IDLE (finished exploring) and need to return
-        should_plant_Astar = self.return_path is None and (self.get_state() == VS.ACTIVE or self.get_state() == VS.IDLE)
-        if should_plant_Astar:
+        # We are not in the base and have no path to it
+        if self.return_path is None:
             try:
                 self.plan_Astar_path()
-            except nx.NetworkXNoPath:
-                print(f"{self.NAME}: A* CANNOT FIND A PATH BACK TO BASE (0,0)!")
-                self.set_state(VS.DEAD)  # VS.DEAD exists
-                return False  # Agent stops
+            except nx.NetworkXNoPath as e:
+                sys.exit(f"A* error: {e}")
             except Exception as e:
-                print(f"{self.NAME}: A* planning failed: {e}")
-                self.set_state(VS.DEAD)
-                return False
+                sys.exit(f"Should not happen: {e}")
 
         # Execute the next step in the A* path
         if self.return_path is not None:
             self.execute_Astar_step()
-
-            # Check if we *just* arrived
-            if self.x == 0 and self.y == 0:
-                print(f"{self.NAME}: A* return complete. rtime {self.get_rtime()}, invoking rescuer.")
-                self.resc.go_save_victims(self.map, self.victims)
-                self.set_state(VS.ENDED)
-                return False
+            print(f"{self.NAME} at position ({self.x}, {self.y}). rtime {self.get_rtime()}")
+        else:
+            sys.exit(f"Should not happen")
 
         return True
