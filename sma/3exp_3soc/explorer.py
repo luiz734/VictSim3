@@ -18,7 +18,7 @@ class NoFrontier(Exception):
     pass
 
 class Explorer(AbstAgent):
-    def __init__(self, env, config_file, resc):
+    def __init__(self, env, config_file, resc, shared_env):
         """ Construtor do agente random on-line
         @param env: a reference to the environment 
         @param config_file: the absolute path to the explorer's config file
@@ -32,6 +32,7 @@ class Explorer(AbstAgent):
         self.G = nx.Graph()         # Persistent graph of the known world
         self.frontier = set()       # Set of (x,y) tuples bordering the unknown
         self.exploration_path = []  # Current A* path to a frontier cell
+        self.shared_env = shared_env
         # ---------------------------------------------------------------------------------
 
         self.set_state(VS.ACTIVE)  # explorer is active since the begin
@@ -280,6 +281,7 @@ class Explorer(AbstAgent):
         # We are already at the base
         if self.x == 0 and self.y == 0:
             if self.get_state() != VS.ENDED:
+                self.shared_env.share_map()
                 self.set_state(VS.ENDED)
             return False
 
