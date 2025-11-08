@@ -19,20 +19,24 @@ from vs.constants import VS
 
 NUM_AGENTS = 3
 
+# Used more as a hack to share data
+# Needs a lot of refactoring
 class SharedEnvironmentData:
     def __init__(self):
         self.COST_DIAG = None
         self.AC_INCR = None
         self.COST_LINE = None
+
         self.unified_map_data = None
         self.unified_victims = {}
         self.explorers = []
         self.rescuers = []
         self.map_lock = threading.Lock()
-        self.share_count = 0
+        self.share_count = 0                # When =3 means all explorers called share_map
 
     def add_explorer(self, e):
         self.explorers.append(e)
+        # Redundant, but easier
         self.COST_LINE = self.explorers[0].COST_LINE
         self.COST_DIAG = self.explorers[0].COST_DIAG
         self.AC_INCR = self.explorers[0].AC_INCR
@@ -59,7 +63,9 @@ class SharedEnvironmentData:
                             self.unified_map_data[coord] = data
                 self.unified_victims.update(explorer.victims)
 
+
             self.share_count += 1
+            # Called when all explorers are done
             if self.share_count == 3:
                 try:
                     with open('debug_unified_victims.pkl', 'wb') as f:
@@ -70,6 +76,8 @@ class SharedEnvironmentData:
                 self.combine_maps()
                 self.create_clusters()
 
+    # Loads the last data obtained by the simulation
+    # Makes it easier test K-means a lot of times
     def load_and_cluster_directly(self):
         print("DEBUG MODE: Skipping simulation")
         with open('debug_unified_victims.pkl', 'rb') as f:
@@ -124,9 +132,17 @@ class SharedEnvironmentData:
                 'dist_base': dist_base,
                 'priority': priority
             })
+        # ^^^^^^^^^^^^^^^^^^
+        # We ended up not using those features
+        # Still keep because we may use in the future
+        # -------
 
         if not processed_data:
             sys.exit("Missing processed_data")
+
+        # From here bellow it is a mess
+        # Gerenates lots of images
+        # Should really refactor later
 
         # K-Means
         df = pd.DataFrame(processed_data)
@@ -206,6 +222,8 @@ class SharedEnvironmentData:
         return overlap
 
 def load_agents(env, config_base_folder, num_agents):
+    # Agents comunicate via shrev
+    # We should implement a proper signal system
     shrev = SharedEnvironmentData()
     for i in range(1, num_agents + 1):
         # Each agent pair has its own configuration directory

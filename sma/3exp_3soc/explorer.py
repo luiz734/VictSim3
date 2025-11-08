@@ -114,15 +114,12 @@ class Explorer(AbstAgent):
             # Plan a path from current_pos to the gateway node
             path = nx.astar_path(self.G, (self.x, self.y), gateway_node, heuristic=self.heuristic_euclidean,
                                  weight='weight')
-
             # Add the frontier cell itself as the final step
             if path[-1] != closest_cell:
                 path.append(closest_cell)
-
             # We have a new path. Store it
             # [1:] because we ignore the starting node
             self.exploration_path = path[1:]
-
             # Get the first step of this new path
             if self.exploration_path:
                 target_x, target_y = self.exploration_path.pop(0)
@@ -195,34 +192,30 @@ class Explorer(AbstAgent):
         if coord not in self.G:
             self.G.add_node(coord)
 
-        # Remove this cell from the frontier (it is now "known")
         self.frontier.discard(coord)
-
         # Check all 8 neighbors
         for direction in range(8):
             dx, dy = Explorer.AC_INCR[direction]
             neighbor_coord = (coord[0] + dx, coord[1] + dy)
 
             if actions_res[direction] == VS.CLEAR:
-                # Neighbor is accessible
-
-                # If this neighbor is *not* in our map, it's a new frontier cell
+                # If this neighbor is not in our map, it's a new frontier cell
                 if not self.map.in_map(neighbor_coord):
                     self.frontier.add(neighbor_coord)
 
-                # If this neighbor *is* in our map (and thus in G), create an edge
+                # If this neighbor is in our map creatw and edge
                 elif neighbor_coord in self.G:
                     # Get neighbor's difficulty
                     neighbor_data = self.map.get(neighbor_coord)
-                    if neighbor_data:  # Safety check
-                        neighbor_difficulty = neighbor_data[0]
-                        if neighbor_difficulty < VS.OBST_WALL:
-                            # Calculate cost: average difficulty * move cost
-                            cost_multiplier = (difficulty + neighbor_difficulty) / 2
-                            move_cost = self.COST_LINE if (dx == 0 or dy == 0) else self.COST_DIAG
-                            weight = cost_multiplier * move_cost
+                    # if neighbor_data:
+                    neighbor_difficulty = neighbor_data[0]
+                    if neighbor_difficulty < VS.OBST_WALL:
+                        # Calculate cost: average difficulty * move cost
+                        cost_multiplier = (difficulty + neighbor_difficulty) / 2
+                        move_cost = self.COST_LINE if (dx == 0 or dy == 0) else self.COST_DIAG
+                        weight = cost_multiplier * move_cost
 
-                            self.G.add_edge(coord, neighbor_coord, weight=weight)
+                        self.G.add_edge(coord, neighbor_coord, weight=weight)
 
             elif actions_res[direction] == VS.WALL or actions_res[direction] == VS.END:
                 # Neighbor is an obstacle. If it was on the frontier, remove it.
@@ -278,7 +271,7 @@ class Explorer(AbstAgent):
                 self.explore()
                 return True
 
-        # --- RETURN TO BASE LOGIC ---
+        # --- RETURN TO BASE LOGIC----
         # We are already at the base
         if self.x == 0 and self.y == 0:
             if self.get_state() != VS.ENDED:
