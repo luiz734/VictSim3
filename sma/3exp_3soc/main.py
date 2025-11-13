@@ -24,25 +24,25 @@ def main(vict_folder, env_folder, config_base_folder):
             print("Canceled by user")
 
 
+RUN_PARAMS_10V = {"vict": "datasets/vict/10v",
+                  "env": "datasets/env/12x12_10v"}
+RUN_PARAMS_408V = {"vict": "datasets/vict/408v",
+                   "env": "datasets/env/94x94_408v"}
+
 if __name__ == '__main__':
     print("------------------")
     print("--- INICIO SMA ---")
     print("------------------")
 
-    # dataset com sinais vitais das vitimas
-    # vict_folder = os.path.join("datasets/vict/", "10v")
-    vict_folder = os.path.join("datasets/vict/", "408v")
-
-    # dataset do ambiente (paredes, posicao das vitimas)
-    env_folder = os.path.join("datasets/env/", "94x94_408v")
-    # env_folder = os.path.join("datasets/env/", "12x12_10v")
+    run_params = RUN_PARAMS_10V
+    # run_params = RUN_PARAMS_408V
 
     # folder das configuracoes dos agentes
     # This is now the BASE folder containing config_ag_1, config_ag_2, etc.
     curr = os.getcwd()
     config_base_folder = os.path.join(curr, "sma", "3exp_3soc")
 
-    main(vict_folder, env_folder, config_base_folder)
+    main(run_params["vict"], run_params["env"], config_base_folder)
 
     print("------------------")
     print("---- FIM SMA -----")

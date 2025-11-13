@@ -14,9 +14,12 @@ from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import seaborn as sns
 from vs.constants import VS
+from event_manager import EventManager, EventType
 
 class AgentsManager:
     def __init__(self,):
+        self.events_manager = EventManager.get_instance()
+
         self.COST_DIAG = None
         self.AC_INCR = None
         self.COST_LINE = None
@@ -34,6 +37,15 @@ class AgentsManager:
         self.COST_LINE = self.explorers[0].COST_LINE
         self.COST_DIAG = self.explorers[0].COST_DIAG
         self.AC_INCR = self.explorers[0].AC_INCR
+
+        self.events_manager.register_callback(EventType.EXPLORATION_STARTED, self.on_exploration_started)
+        self.events_manager.register_callback(EventType.EXPLORATION_COMPLETED, self.on_exploration_ended)
+
+    def on_exploration_started(self, explorer):
+        print(f"exploration of {explorer.NAME} started")
+
+    def on_exploration_ended(self, explorer):
+        print(f"exploration of {explorer.NAME} finished")
 
     def add_rescuer(self, r):
         self.rescuers.append(r)

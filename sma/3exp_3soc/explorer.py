@@ -12,6 +12,7 @@ import networkx as nx
 from map import Map
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
+from event_manager import EventManager, EventType
 
 # Only to make errors more readable
 class NoFrontier(Exception):
@@ -275,6 +276,7 @@ class Explorer(AbstAgent):
         # We are already at the base
         if self.x == 0 and self.y == 0:
             if self.get_state() != VS.ENDED:
+                EventManager.get_instance().emit_event(EventType.EXPLORATION_COMPLETED, self)
                 self.shared_env.share_map()
                 self.set_state(VS.ENDED)
             return False
@@ -291,7 +293,7 @@ class Explorer(AbstAgent):
         # Execute the next step in the A* path
         if self.return_path is not None:
             self.execute_Astar_step()
-            print(f"{self.NAME} at position ({self.x}, {self.y}). rtime {self.get_rtime()}")
+            # print(f"{self.NAME} at position ({self.x}, {self.y}). rtime {self.get_rtime()}")
         else:
             sys.exit(f"Should not happen")
 
