@@ -141,7 +141,7 @@ class Explorer(AbstAgent):
             dx, dy = self.get_next_frontier_step()
         except NoFrontier:
             self.set_state(VS.IDLE)
-            self.shared_env.share_map()
+            # self.shared_env.share_map()
             return
 
         # Moves the explorer agent to another position
@@ -277,7 +277,7 @@ class Explorer(AbstAgent):
         if self.x == 0 and self.y == 0:
             if self.get_state() != VS.ENDED:
                 EventManager.get_instance().emit_event(EventType.EXPLORATION_COMPLETED, self)
-                self.shared_env.share_map()
+                # self.shared_env.share_map()
                 self.set_state(VS.ENDED)
             return False
 

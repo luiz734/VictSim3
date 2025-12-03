@@ -29,7 +29,7 @@ class AgentsManager:
         self.explorers = []
         self.rescuers = []
         self.map_lock = threading.Lock()
-        self.share_count = 0                # When =3 means all explorers called share_map
+        self.explorers_done = {}
 
     def add_explorer(self, e):
         self.explorers.append(e)
@@ -41,11 +41,20 @@ class AgentsManager:
         self.events_manager.register_callback(EventType.EXPLORATION_STARTED, self.on_exploration_started)
         self.events_manager.register_callback(EventType.EXPLORATION_COMPLETED, self.on_exploration_ended)
 
+    def add_rescuer(selfself, e):
+        pass
+
     def on_exploration_started(self, explorer):
-        print(f"exploration of {explorer.NAME} started")
+        print(f"exploration of {explorer.NAME} started {len(self.explorers_done)}")
 
     def on_exploration_ended(self, explorer):
-        print(f"exploration of {explorer.NAME} finished")
+        self.explorers_done[explorer] = True
+        print(f"exploration of {explorer.NAME} finished {len(self.explorers_done)}")
+
+
+        if len(self.explorers_done) == 3:
+            print(f"All explorer have finished")
+            self.share_map()
 
     def add_rescuer(self, r):
         self.rescuers.append(r)
@@ -98,17 +107,15 @@ class AgentsManager:
                 self.unified_victims.update(explorer.victims)
 
 
-            self.share_count += 1
             # Called when all explorers are done
-            if self.share_count == 3:
-                try:
-                    with open('debug_unified_victims.pkl', 'wb') as f:
-                        pickle.dump(self.unified_victims, f)
-                    print("DEBUG: 'debug_unified_victims.pkl' saved.")
-                except Exception as e:
-                    print(f"DEBUG: Failed to save victims pkl: {e}")
-                self.combine_maps()
-                self.create_clusters()
+            try:
+                with open('debug_unified_victims.pkl', 'wb') as f:
+                    pickle.dump(self.unified_victims, f)
+                print("DEBUG: 'debug_unified_victims.pkl' saved.")
+            except Exception as e:
+                print(f"DEBUG: Failed to save victims pkl: {e}")
+            self.combine_maps()
+            self.create_clusters()
 
     # Loads the last data obtained by the simulation
     # Makes it easier test K-means a lot of times
@@ -126,7 +133,7 @@ class AgentsManager:
             explorer.map.map_data = self.unified_map_data
 
     def create_clusters(self):
-        assert (self.share_count == 3)
+        assert (len(self.explorers_done) == 3)
         print("Creating clusters...")
 
         overlap_value = self.calculate_overlap()
@@ -138,7 +145,8 @@ class AgentsManager:
         print("Model loaded")
 
         if not self.unified_victims:
-            sys.exit("Missing victms data")
+            sys.exit("Missing victms data. Can't create clusters.")
+            return
 
         # Data used to create dataframe
         processed_data = []
