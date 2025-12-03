@@ -64,6 +64,15 @@ class Explorer(AbstAgent):
         elif "3" in self.NAME:  # Right Zone
             self.zone_min_y = 16
 
+        # 12x12
+        # if "1" in self.NAME:  # Left Zone
+        #     self.zone_max_y = -4
+        # elif "2" in self.NAME:  # Middle Zone
+        #     self.zone_min_y = -3
+        #     self.zone_max_y = 6
+        # elif "3" in self.NAME:  # Right Zone
+        #     self.zone_min_y = 12
+
 
     def get_next_frontier_step(self):
         # If we have a path, follow it
@@ -168,6 +177,7 @@ class Explorer(AbstAgent):
             if seq != VS.NO_VICTIM:
                 vs = self.read_vital_signals()
                 self.victims[seq] = ((self.x, self.y), vs)
+                print(f"Found victm at {self.x},{self.x}")
             
             # Calculates the difficulty of the visited cell
             difficulty = (rtime_bef - rtime_aft)
