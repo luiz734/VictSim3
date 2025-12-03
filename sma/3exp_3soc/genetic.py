@@ -3,25 +3,19 @@ import math
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import multiprocessing  # <--- Added for Parallelism
+import multiprocessing
+import time
 from deap import base, creator, tools
 
 # --- Configuration ---
-DEBUG = True
 GRID_LIMIT = 50
-CPU_CORES = 10  # <--- User requested 10 CPUs
+CPU_CORES = 10
+POPULATION_SIZE = 50
+BLOB_RATIO = 0.1  # 10% of the population will be seeded
+BLOB_LENGTH_PCT = 0.15  # Length of the optimized segment
 
-# Global flag for interaction
+# Global flag for interaction (only used in debug/single run)
 stop_evolution = False
-
-
-def on_key(event):
-    """Callback to handle key presses during debug mode."""
-    global stop_evolution
-    if event.key == ' ':
-        stop_evolution = True
-        print("Stopping evolution for current file...")
 
 
 def calculate_distance(p1, p2):
@@ -29,9 +23,6 @@ def calculate_distance(p1, p2):
 
 
 def eval_path(individual, ids_list, data_dict):
-    """
-    Fitness function must be picklable for multiprocessing.
-    """
     distance = 0.0
     for i in range(len(individual) - 1):
         id_1 = ids_list[individual[i]]
@@ -42,11 +33,49 @@ def eval_path(individual, ids_list, data_dict):
     return (distance,)
 
 
-def update_plot(df, best_order_ids, index, ax, generation):
+def create_blob_individual(ids_list, data_dict):
+    num_victims = len(ids_list)
+    indices = list(range(num_victims))
+    unvisited = set(indices)
+
+    segment_length = max(2, int(num_victims * BLOB_LENGTH_PCT))
+
+    current_idx = random.choice(indices)
+    path = [current_idx]
+    unvisited.remove(current_idx)
+
+    for _ in range(segment_length - 1):
+        if not unvisited:
+            break
+        current_id = ids_list[current_idx]
+        p1 = data_dict[current_id]
+
+        nearest_idx = -1
+        min_dist = float('inf')
+
+        for candidate_idx in unvisited:
+            candidate_id = ids_list[candidate_idx]
+            p2 = data_dict[candidate_id]
+            dist = calculate_distance(p1, p2)
+
+            if dist < min_dist:
+                min_dist = dist
+                nearest_idx = candidate_idx
+
+        current_idx = nearest_idx
+        path.append(current_idx)
+        unvisited.remove(current_idx)
+
+    remaining = list(unvisited)
+    random.shuffle(remaining)
+    return creator.Individual(path + remaining)
+
+
+def update_plot(df, best_order_ids, index, ax, generation, current_dist, strategy):
     ax.clear()
     ax.set_xlim(-GRID_LIMIT, GRID_LIMIT)
     ax.set_ylim(-GRID_LIMIT, GRID_LIMIT)
-    ax.set_title(f'Optimizing File {index} | Gen: {generation} | (Press SPACE to Finish)')
+    ax.set_title(f'File {index} | {strategy} | Gen: {generation} | Dist: {current_dist:.2f}')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.grid(True, linestyle='--', alpha=0.4)
@@ -62,27 +91,26 @@ def update_plot(df, best_order_ids, index, ax, generation):
     else:
         ax.scatter(df['x'], df['y'], c='blue', s=100, zorder=4)
 
-    # Trace Path
     path_coords = []
     for vid in best_order_ids:
         row = df[df['id_vict'] == vid].iloc[0]
         path_coords.append((row['x'], row['y']))
-        ax.text(row['x'] + 1, row['y'] + 1, str(int(vid)), fontsize=10)
+        # ax.text(row['x'] + 1, row['y'] + 1, str(int(vid)), fontsize=10) # Hide text for speed in debug
 
     if path_coords:
         xs, ys = zip(*path_coords)
         ax.plot(xs, ys, color='gray', linestyle='--', alpha=0.6, marker='')
 
-        for i in range(len(path_coords) - 1):
-            p1 = path_coords[i]
-            p2 = path_coords[i + 1]
-            dx = p2[0] - p1[0]
-            dy = p2[1] - p1[1]
-            ax.arrow(p1[0], p1[1], dx, dy, head_width=2, head_length=2, fc='gray', ec='gray', length_includes_head=True,
-                     alpha=0.5)
 
-
-def get_visit_order(index):
+def get_visit_order(index, strategy='RANDOM', debug_mode=False):
+    """
+    Args:
+        index (int): File index.
+        strategy (str): 'RANDOM' or 'HYBRID'.
+        debug_mode (bool): If True, shows plot. If False, runs silently.
+    Returns:
+        tuple: (best_order_ids, best_fitness_value)
+    """
     global stop_evolution
     stop_evolution = False
 
@@ -91,14 +119,17 @@ def get_visit_order(index):
     try:
         df = pd.read_csv(filename)
     except FileNotFoundError:
-        print(f"File {filename} not found.")
-        return []
+        # Generate dummy data for testing if file missing
+        # print(f"File {filename} not found. Using random dummy data.")
+        # df = pd.DataFrame({'id_vict': range(20), 'x': np.random.uniform(-40,40,20), 'y': np.random.uniform(-40,40,20)})
+        return [], 0.0
 
     victims = {int(row['id_vict']): {'x': row['x'], 'y': row['y']} for _, row in df.iterrows()}
     ids_list = list(victims.keys())
     num_victims = len(ids_list)
 
     # 2. Setup DEAP
+    # Ensure classes exist
     if not hasattr(creator, "FitnessMin"):
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
     if not hasattr(creator, "Individual"):
@@ -106,40 +137,47 @@ def get_visit_order(index):
 
     toolbox = base.Toolbox()
     toolbox.register("indices", random.sample, range(num_victims), num_victims)
-    toolbox.register("individual", tools.initIterate, creator.Individual, toolbox.indices)
-    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
+    toolbox.register("individual_random", tools.initIterate, creator.Individual, toolbox.indices)
+    toolbox.register("individual_blob", create_blob_individual, ids_list=ids_list, data_dict=victims)
     toolbox.register("evaluate", eval_path, ids_list=ids_list, data_dict=victims)
     toolbox.register("mate", tools.cxOrdered)
     toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
     toolbox.register("select", tools.selTournament, tournsize=3)
 
-    # 3. Initialize Parallel Pool
-    # We use a context manager to ensure the pool closes cleanly
+    # 3. Execution
+    # Note: We use a pool for each run. For massive benchmarks, creating pools
+    # repeatedly has overhead, but it ensures clean state for each run.
     with multiprocessing.Pool(processes=CPU_CORES) as pool:
-
-        # Register the pool.map function
         toolbox.register("map", pool.map)
 
-        pop = toolbox.population(n=50)
+        if strategy == 'HYBRID':
+            num_blob = int(POPULATION_SIZE * BLOB_RATIO)
+            num_random = POPULATION_SIZE - num_blob
+            pop = [toolbox.individual_blob() for _ in range(num_blob)] + \
+                  [toolbox.individual_random() for _ in range(num_random)]
+        else:
+            pop = [toolbox.individual_random() for _ in range(POPULATION_SIZE)]
+
         hof = tools.HallOfFame(1)
 
-        # Evaluate initial population using PARALLEL map
+        # Evaluate initial
         fitnesses = list(toolbox.map(toolbox.evaluate, pop))
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
 
-        if DEBUG:
+        # Visualization Setup
+        if debug_mode:
             plt.ion()
             fig, ax = plt.subplots(figsize=(8, 8))
-            fig.canvas.mpl_connect('key_press_event', on_key)
 
-        # 4. Evolution Loop
+        # Evolution Loop
         gen = 0
-        while True:
+        MAX_GEN = 100
+
+        while gen < MAX_GEN:
             offspring = toolbox.select(pop, len(pop))
             offspring = list(map(toolbox.clone, offspring))
 
-            # Genetic Operations
             for child1, child2 in zip(offspring[::2], offspring[1::2]):
                 if random.random() < 0.7:
                     toolbox.mate(child1, child2)
@@ -151,7 +189,6 @@ def get_visit_order(index):
                     toolbox.mutate(mutant)
                     del mutant.fitness.values
 
-            # Recalculate fitness for invalid individuals using PARALLEL map
             invalid_ind = [ind for ind in offspring if not ind.fitness.valid]
             if invalid_ind:
                 fitnesses = list(toolbox.map(toolbox.evaluate, invalid_ind))
@@ -160,27 +197,21 @@ def get_visit_order(index):
 
             pop[:] = offspring
             hof.update(pop)
-
             gen += 1
 
-            # Debug Visualization (Happens in Main Process)
-            if DEBUG:
+            if debug_mode:
                 best_indices = list(hof[0])
-                best_order_ids = [ids_list[i] for i in best_indices]
-
-                update_plot(df, best_order_ids, index, ax, gen)
+                best_ids = [ids_list[i] for i in best_indices]
+                curr_fit = hof[0].fitness.values[0]
+                update_plot(df, best_ids, index, ax, gen, curr_fit, strategy)
                 plt.draw()
-                # Use a small pause. Note: If this is too fast, parallelism overhead might stutter.
-                plt.pause(0.01)
-
-                if stop_evolution:
-                    plt.close(fig)
-                    break
-            else:
-                if gen >= 100:
-                    break
+                plt.pause(0.001)
 
         best_indices = list(hof[0])
         best_order_ids = [ids_list[i] for i in best_indices]
+        best_fitness = hof[0].fitness.values[0]
 
-        return best_order_ids
+        if debug_mode:
+            plt.close(fig)
+
+        return best_order_ids, best_fitness
