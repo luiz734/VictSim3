@@ -36,6 +36,10 @@ class EventManager:
 
     # noinspection PyTypeHints
     def register_callback(self, event: EventType, callback: callable):
+        callbacks = self.event_connections.get(event)
+        if callbacks:
+            print(f"Event {event.name} already registered. Skipping...")
+            return
         self.event_connections[event].append(callback)
 
     def unregister_callback(self, event, callback):

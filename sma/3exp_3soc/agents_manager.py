@@ -45,8 +45,8 @@ class AgentsManager:
         self.rescuers.append(r)
         # No need to initialize constants again: they are the same
 
-        self.events_manager.register_callback(EventType.RESCUE_STARTED, self.on_exploration_started)
-        self.events_manager.register_callback(EventType.RESCUE_COMPLETED, self.on_exploration_ended)
+        self.events_manager.register_callback(EventType.RESCUE_STARTED, self.on_rescue_started)
+        self.events_manager.register_callback(EventType.RESCUE_COMPLETED, self.on_rescue_ended)
 
 
     def on_exploration_started(self, explorer):
@@ -59,20 +59,34 @@ class AgentsManager:
 
         if len(self.explorers_done) == 3:
             print(f"All explorer have finished")
-            self.share_map()
 
+            self.share_map()
             # We combined the map in self.share_map()
             combined_map = explorer.map
+            self.start_rescue()
 
-            for r in self.rescuers:
-                r.go_save_victims(combined_map, self.unified_victims)
 
     def on_rescue_started(self, rescuer):
+        print("rescue started")
         pass
 
     def on_rescue_ended(self, rescuer):
         print(rescuer)
         pass
+
+    def start_rescue(self):
+        self.events_manager.unregister_callback(EventType.EXPLORATION_STARTED, self.on_exploration_started)
+        self.events_manager.unregister_callback(EventType.EXPLORATION_COMPLETED, self.on_exploration_ended)
+
+        # We combined the map in self.share_map()
+        # They all have the same map
+        combined_map = self.explorers[0].map
+
+        for r in self.rescuers:
+            r.go_save_victims(combined_map, self.unified_victims)
+
+        print("done")
+
 
     def load_agents(self, env, config_base_folder, num_agents):
         for i in range(1, num_agents + 1):

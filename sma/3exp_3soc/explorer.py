@@ -285,7 +285,6 @@ class Explorer(AbstAgent):
         if self.x == 0 and self.y == 0:
             if self.get_state() != VS.ENDED:
                 EventManager.get_instance().emit_event(EventType.EXPLORATION_COMPLETED, self)
-                # self.shared_env.share_map()
                 self.set_state(VS.ENDED)
             return False
 
