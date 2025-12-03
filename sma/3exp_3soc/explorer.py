@@ -64,15 +64,6 @@ class Explorer(AbstAgent):
         elif "3" in self.NAME:  # Right Zone
             self.zone_min_y = 16
 
-        # 12x12
-        # if "1" in self.NAME:  # Left Zone
-        #     self.zone_max_y = -4
-        # elif "2" in self.NAME:  # Middle Zone
-        #     self.zone_min_y = -3
-        #     self.zone_max_y = 6
-        # elif "3" in self.NAME:  # Right Zone
-        #     self.zone_min_y = 12
-
 
     def get_next_frontier_step(self):
         # If we have a path, follow it
@@ -149,8 +140,15 @@ class Explorer(AbstAgent):
         try:
             dx, dy = self.get_next_frontier_step()
         except NoFrontier:
-            self.set_state(VS.IDLE)
-            # self.shared_env.share_map()
+            if self.return_path is None:
+                try:
+                    self.plan_Astar_path()
+                except nx.NetworkXNoPath as e:
+                    sys.exit(f"A* error: {e}")
+                except Exception as e:
+                    sys.exit(f"Should not happen: {e}")
+            # self.set_state(VS.IDLE)
+            # EventManager.get_instance().emit_event(EventType.EXPLORATION_COMPLETED, self)
             return
 
         # Moves the explorer agent to another position

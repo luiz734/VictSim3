@@ -71,6 +71,7 @@ class AgentsManager:
         pass
 
     def on_rescue_ended(self, rescuer):
+        print(rescuer)
         pass
 
     def load_agents(self, env, config_base_folder, num_agents):
