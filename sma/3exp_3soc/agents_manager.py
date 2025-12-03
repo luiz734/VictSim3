@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from vs.constants import VS
 from event_manager import EventManager, EventType
+from genetic import get_visit_order
 
 class AgentsManager:
     def __init__(self,):
@@ -82,8 +83,13 @@ class AgentsManager:
         # They all have the same map
         combined_map = self.explorers[0].map
 
-        for r in self.rescuers:
-            r.go_save_victims(combined_map, self.unified_victims)
+        for index in range(len(self.rescuers)):
+            r = self.rescuers[index]
+            order = get_visit_order(index+1)
+            print(order)
+            # r.go_save_victims(combined_map, self.unified_victims)
+
+
 
         print("done")
 

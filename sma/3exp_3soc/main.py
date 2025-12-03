@@ -5,6 +5,7 @@ import threading
 import os
 from vs.environment import Env
 from agents_manager import AgentsManager
+from genetic import get_visit_order
 
 NUM_AGENTS = 3
 DEBUG_SKIP_SIMULATION = False
@@ -34,8 +35,14 @@ if __name__ == '__main__':
     print("--- INICIO SMA ---")
     print("------------------")
 
-    run_params = RUN_PARAMS_10V
-    # run_params = RUN_PARAMS_408V
+    for index in range(3):
+        order = get_visit_order(index + 1)
+        print(order)
+
+    exit(0)
+
+    # run_params = RUN_PARAMS_10V
+    run_params = RUN_PARAMS_408V
 
     # folder das configuracoes dos agentes
     # This is now the BASE folder containing config_ag_1, config_ag_2, etc.
