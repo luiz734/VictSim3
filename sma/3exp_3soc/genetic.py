@@ -7,11 +7,11 @@ import multiprocessing
 import time
 from deap import base, creator, tools
 
-# --- Configuration ---
+
 GRID_LIMIT = 50
 CPU_CORES = 10
 POPULATION_SIZE = 50
-BLOB_RATIO = 0.1  # 10% of the population will be seeded
+BLOB_RATIO = 0.1  # 10% of the popilation will be seeded
 BLOB_LENGTH_PCT = 0.15  # Length of the optimized segment
 
 # Global flag for interaction (only used in debug/single run)
@@ -23,14 +23,6 @@ def calculate_distance(p1, p2):
 
 
 def eval_path(individual, ids_list, data_dict):
-    """
-    Fitness = Total Distance + Weighted Latency Penalty
-
-    Strategy:
-    - We track 'current_time' (accumulated distance).
-    - Every time we arrive at a victim, we penalize based on how long it took
-      to get there multiplied by their urgency.
-    """
     total_distance = 0.0
     current_time = 0.0
     weighted_penalty = 0.0
@@ -42,7 +34,6 @@ def eval_path(individual, ids_list, data_dict):
         3: 0.0 # Black
     }
 
-    # 1. Start at Base (0,0)
     prev_x, prev_y = 0.0, 0.0
 
     for i in range(len(individual)):
@@ -50,30 +41,22 @@ def eval_path(individual, ids_list, data_dict):
         victim_id = ids_list[individual[i]]
         victim_data = data_dict[victim_id]
 
-        # Calculate distance from previous location (or base) to this victim
+        # Calculate distance from prev location to victm
         dist = math.sqrt((prev_x - victim_data['x']) ** 2 + (prev_y - victim_data['y']) ** 2)
 
-        # Update accumulators
         total_distance += dist
         current_time += dist
 
-        # Apply Latency Penalty
-        # "How long did it take to get here?" * "How important are they?"
+        # Apply penalty (grow over time)
         tri_class = victim_data['tri']
         weight = urgency_weights.get(tri_class, 0)
         weighted_penalty += (current_time * weight)
 
-        # Update previous coordinates for next iteration
         prev_x, prev_y = victim_data['x'], victim_data['y']
 
-    # OPTIONAL: Add return to base distance if required by rules,
-    # but usually Triage optimization stops at the last victim.
-    # If return to base is mandatory for total cost, uncomment below:
-    # dist_home = math.sqrt((prev_x - 0)**2 + (prev_y - 0)**2)
-    # total_distance += dist_home
 
-    # Combine metrics.
-    # The penalty will likely be much larger than distance, effectively driving the sorting.
+    # The penalty will likely be MUCH LARGER than distance
+    # That is the idea
     final_fitness = total_distance + weighted_penalty
 
     return (final_fitness,)
@@ -117,6 +100,8 @@ def create_blob_individual(ids_list, data_dict):
     return creator.Individual(path + remaining)
 
 
+# LLM generated do debug
+# NOTE: Don't bother optimizing this
 def update_plot(df, best_order_ids, index, ax, generation, current_dist, strategy):
     ax.clear()
     ax.set_xlim(-GRID_LIMIT, GRID_LIMIT)
@@ -165,25 +150,16 @@ def update_plot(df, best_order_ids, index, ax, generation, current_dist, strateg
 
 
 def get_visit_order(index, strategy='RANDOM', debug_mode=False):
-    """
-    Args:
-        index (int): File index.
-        strategy (str): 'RANDOM' or 'HYBRID'.
-        debug_mode (bool): If True, shows plot. If False, runs silently.
-    Returns:
-        tuple: (best_order_ids, best_fitness_value)
-    """
+
     global stop_evolution
     stop_evolution = False
 
-    # 1. Load Data
     filename = f"cluster_{index}.txt"
     try:
         df = pd.read_csv(filename)
     except FileNotFoundError:
         return [], 0.0
 
-    # UPDATED: Load 'tri' column along with x and y
     victims = {
         int(row['id_vict']): {
             'x': row['x'],
@@ -198,8 +174,6 @@ def get_visit_order(index, strategy='RANDOM', debug_mode=False):
     if num_victims < 2:
         return ids_list, 0.0
 
-    # 2. Setup DEAP
-    # Ensure classes exist
     if not hasattr(creator, "FitnessMin"):
         creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
     if not hasattr(creator, "Individual"):
@@ -214,9 +188,8 @@ def get_visit_order(index, strategy='RANDOM', debug_mode=False):
     toolbox.register("mutate", tools.mutShuffleIndexes, indpb=0.05)
     toolbox.register("select", tools.selTournament, tournsize=3)
 
-    # 3. Execution
-    # Note: We use a pool for each run. For massive benchmarks, creating pools
-    # repeatedly has overhead, but it ensures clean state for each run.
+    # Attempt to multithread
+    # It is still slow, so maybe remove it
     with multiprocessing.Pool(processes=CPU_CORES) as pool:
         toolbox.register("map", pool.map)
 
@@ -230,17 +203,15 @@ def get_visit_order(index, strategy='RANDOM', debug_mode=False):
 
         hof = tools.HallOfFame(1)
 
-        # Evaluate initial
         fitnesses = list(toolbox.map(toolbox.evaluate, pop))
         for ind, fit in zip(pop, fitnesses):
             ind.fitness.values = fit
 
-        # Visualization Setup
         if debug_mode:
             plt.ion()
             fig, ax = plt.subplots(figsize=(8, 8))
 
-        # Evolution Loop
+        # --------------- MAIN LOOP -----------
         gen = 0
         MAX_GEN = 100
 

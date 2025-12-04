@@ -3,6 +3,7 @@ from enum import Enum, auto
 from collections import defaultdict
 import typing
 
+# How agents communicate. Similar to godot signals
 
 class EventType(Enum):
     EXPLORATION_STARTED = auto()

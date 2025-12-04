@@ -48,12 +48,9 @@ class Rescuer(AbstAgent):
         for seq, data in self.victims.items():
             print(f"{self.NAME} Victim {seq} at {data[0]}")
 
-        # Build the graph fully since we have the map
+        # Lets build it here from now
         self.build_graph()
-
-        # Generate the initial plan
         self.plan_rescue_path()
-
         print(f"{self.NAME} PLAN GENERATED ({len(self.plan)} steps)")
         self.set_state(VS.ACTIVE)
 
@@ -143,6 +140,7 @@ class Rescuer(AbstAgent):
             except nx.NetworkXNoPath:
                 print(f"{self.NAME}: No path found to return to base.")
 
+    # From project specification
     def _log_rescue(self, x, y):
         victim_id = -1
         # Identify the victim ID based on current coordinates
@@ -164,7 +162,6 @@ class Rescuer(AbstAgent):
     def deliberate(self) -> bool:
         """ The simulator calls this method at each cycle. """
 
-        # Check if plan is empty
         if not self.plan:
             return False
 
