@@ -41,9 +41,9 @@ def eval_path(individual, ids_list, data_dict):
     # 0 (Green):   Not Urgent -> Low Penalty
     # 3 (Black):   Deceased -> No Penalty for delay
     urgency_weights = {
-        2: 100.0,
-        1: 10.0,
-        0: 1.0,
+        2: 60.0,
+        1: 100.0,
+        0: 80.0,
         3: 0.0
     }
 

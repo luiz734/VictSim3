@@ -175,7 +175,7 @@ class Explorer(AbstAgent):
             if seq != VS.NO_VICTIM:
                 vs = self.read_vital_signals()
                 self.victims[seq] = ((self.x, self.y), vs)
-                print(f"Found victm at {self.x},{self.x}")
+                print(f"{self.NAME} Found victm at {self.x},{self.x}")
             
             # Calculates the difficulty of the visited cell
             difficulty = (rtime_bef - rtime_aft)
