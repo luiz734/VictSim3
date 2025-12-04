@@ -80,11 +80,14 @@ if __name__ == '__main__':
     print("--- INICIO SMA ---")
     print("------------------")
 
-    benchmak_strategies()
-    exit(0)
+    # benchmak_strategies()
+    # # for index in range(3):
+    # #     order = get_visit_order(index + 1,  strategy='HYBRID', debug_mode=True)
+    # #     print(order)
+    # exit(0)
 
-    # run_params = RUN_PARAMS_10V
-    run_params = RUN_PARAMS_408V
+    run_params = RUN_PARAMS_10V
+    # run_params = RUN_PARAMS_408V
 
     # folder das configuracoes dos agentes
     # This is now the BASE folder containing config_ag_1, config_ag_2, etc.

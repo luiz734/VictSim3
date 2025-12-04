@@ -85,9 +85,13 @@ class AgentsManager:
 
         for index in range(len(self.rescuers)):
             r = self.rescuers[index]
-            order = get_visit_order(index+1)
-            print(order)
-            # r.go_save_victims(combined_map, self.unified_victims)
+            order_ids, _ = get_visit_order(index + 1, strategy='HYBRID', debug_mode=False)
+
+            # corrected: creates a dict {id: data} instead of a list [data]
+            ordered_victims = {x: self.unified_victims[x] for x in order_ids}
+
+            print(order_ids)
+            r.go_save_victims(combined_map, ordered_victims)
 
 
 

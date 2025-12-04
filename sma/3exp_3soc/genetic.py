@@ -23,14 +23,65 @@ def calculate_distance(p1, p2):
 
 
 def eval_path(individual, ids_list, data_dict):
-    distance = 0.0
-    for i in range(len(individual) - 1):
-        id_1 = ids_list[individual[i]]
-        id_2 = ids_list[individual[i + 1]]
-        p1 = data_dict[id_1]
-        p2 = data_dict[id_2]
-        distance += calculate_distance(p1, p2)
-    return (distance,)
+    """
+    Fitness = Total Distance + Weighted Latency Penalty
+
+    Strategy:
+    - We track 'current_time' (accumulated distance).
+    - Every time we arrive at a victim, we penalize based on how long it took
+      to get there multiplied by their urgency.
+    """
+    total_distance = 0.0
+    current_time = 0.0
+    weighted_penalty = 0.0
+
+    # Priority Weights based on START Triage
+    # 2 (Red):     Most Urgent -> High Penalty for delay
+    # 1 (Yellow):  Urgent -> Medium Penalty
+    # 0 (Green):   Not Urgent -> Low Penalty
+    # 3 (Black):   Deceased -> No Penalty for delay
+    urgency_weights = {
+        2: 100.0,
+        1: 10.0,
+        0: 1.0,
+        3: 0.0
+    }
+
+    # 1. Start at Base (0,0)
+    prev_x, prev_y = 0.0, 0.0
+
+    for i in range(len(individual)):
+        # Get target victim
+        victim_id = ids_list[individual[i]]
+        victim_data = data_dict[victim_id]
+
+        # Calculate distance from previous location (or base) to this victim
+        dist = math.sqrt((prev_x - victim_data['x']) ** 2 + (prev_y - victim_data['y']) ** 2)
+
+        # Update accumulators
+        total_distance += dist
+        current_time += dist
+
+        # Apply Latency Penalty
+        # "How long did it take to get here?" * "How important are they?"
+        tri_class = victim_data['tri']
+        weight = urgency_weights.get(tri_class, 0)
+        weighted_penalty += (current_time * weight)
+
+        # Update previous coordinates for next iteration
+        prev_x, prev_y = victim_data['x'], victim_data['y']
+
+    # OPTIONAL: Add return to base distance if required by rules,
+    # but usually Triage optimization stops at the last victim.
+    # If return to base is mandatory for total cost, uncomment below:
+    # dist_home = math.sqrt((prev_x - 0)**2 + (prev_y - 0)**2)
+    # total_distance += dist_home
+
+    # Combine metrics.
+    # The penalty will likely be much larger than distance, effectively driving the sorting.
+    final_fitness = total_distance + weighted_penalty
+
+    return (final_fitness,)
 
 
 def create_blob_individual(ids_list, data_dict):
@@ -75,31 +126,47 @@ def update_plot(df, best_order_ids, index, ax, generation, current_dist, strateg
     ax.clear()
     ax.set_xlim(-GRID_LIMIT, GRID_LIMIT)
     ax.set_ylim(-GRID_LIMIT, GRID_LIMIT)
-    ax.set_title(f'File {index} | {strategy} | Gen: {generation} | Dist: {current_dist:.2f}')
+    ax.set_title(f'File {index} | {strategy} | Gen: {generation} | Fit: {current_dist:.0f}')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.grid(True, linestyle='--', alpha=0.4)
 
     # Plot Base
-    ax.scatter(0, 0, marker='X', color='red', s=150, label='Base', zorder=5)
+    ax.scatter(0, 0, marker='X', color='blue', s=150, label='Base', zorder=5)
 
-    # Plot Victims
+    # UPDATED: Plot Victims with correct START colors
+    # 0=Green, 1=Yellow, 2=Red, 3=Black
     if 'tri' in df.columns:
-        colors = {0: 'black', 1: 'red', 2: 'orange', 3: 'green'}
-        c_list = [colors.get(r['tri'], 'blue') for _, r in df.iterrows()]
-        ax.scatter(df['x'], df['y'], c=c_list, s=100, zorder=4)
+        color_map = {0: 'green', 1: 'gold', 2: 'red', 3: 'black'}
+        c_list = [color_map.get(r['tri'], 'gray') for _, r in df.iterrows()]
+        ax.scatter(df['x'], df['y'], c=c_list, s=100, edgecolors='white', zorder=4)
     else:
-        ax.scatter(df['x'], df['y'], c='blue', s=100, zorder=4)
+        ax.scatter(df['x'], df['y'], c='gray', s=100, zorder=4)
 
+    # Trace Path
     path_coords = []
+    # Add Base as start point for visualization line
+    path_coords.append((0, 0))
+
     for vid in best_order_ids:
         row = df[df['id_vict'] == vid].iloc[0]
         path_coords.append((row['x'], row['y']))
-        # ax.text(row['x'] + 1, row['y'] + 1, str(int(vid)), fontsize=10) # Hide text for speed in debug
+        # ax.text(row['x'] + 1, row['y'] + 1, str(int(vid)), fontsize=10)
 
     if path_coords:
         xs, ys = zip(*path_coords)
         ax.plot(xs, ys, color='gray', linestyle='--', alpha=0.6, marker='')
+
+        # Arrow logic (optional, keeping your existing style)
+        for i in range(len(path_coords) - 1):
+            p1 = path_coords[i]
+            p2 = path_coords[i + 1]
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            # Only draw arrows if points are far enough apart to see them
+            if abs(dx) > 0.1 or abs(dy) > 0.1:
+                ax.arrow(p1[0], p1[1], dx, dy, head_width=1.5, head_length=1.5,
+                         fc='gray', ec='gray', length_includes_head=True, alpha=0.5)
 
 
 def get_visit_order(index, strategy='RANDOM', debug_mode=False):
@@ -119,12 +186,17 @@ def get_visit_order(index, strategy='RANDOM', debug_mode=False):
     try:
         df = pd.read_csv(filename)
     except FileNotFoundError:
-        # Generate dummy data for testing if file missing
-        # print(f"File {filename} not found. Using random dummy data.")
-        # df = pd.DataFrame({'id_vict': range(20), 'x': np.random.uniform(-40,40,20), 'y': np.random.uniform(-40,40,20)})
         return [], 0.0
 
-    victims = {int(row['id_vict']): {'x': row['x'], 'y': row['y']} for _, row in df.iterrows()}
+    # UPDATED: Load 'tri' column along with x and y
+    victims = {
+        int(row['id_vict']): {
+            'x': row['x'],
+            'y': row['y'],
+            'tri': int(row['tri'])
+        }
+        for _, row in df.iterrows()
+    }
     ids_list = list(victims.keys())
     num_victims = len(ids_list)
 
