@@ -111,6 +111,7 @@ class Rescuer(AbstAgent):
             except nx.NetworkXNoPath:
                 print(f"{self.NAME}: No path found to return to base.")
 
+    @property
     def deliberate(self) -> bool:
         if not self.plan:
             return False
