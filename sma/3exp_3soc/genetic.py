@@ -35,16 +35,11 @@ def eval_path(individual, ids_list, data_dict):
     current_time = 0.0
     weighted_penalty = 0.0
 
-    # Priority Weights based on START Triage
-    # 2 (Red):     Most Urgent -> High Penalty for delay
-    # 1 (Yellow):  Urgent -> Medium Penalty
-    # 0 (Green):   Not Urgent -> Low Penalty
-    # 3 (Black):   Deceased -> No Penalty for delay
     urgency_weights = {
-        2: 60.0,
-        1: 100.0,
-        0: 80.0,
-        3: 0.0
+        0: 80.0,  # Green
+        1: 100.0, # Yellow
+        2: 60.0,  # Red
+        3: 0.0 # Black
     }
 
     # 1. Start at Base (0,0)
