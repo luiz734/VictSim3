@@ -199,6 +199,9 @@ def get_visit_order(index, strategy='RANDOM', debug_mode=False):
     }
     ids_list = list(victims.keys())
     num_victims = len(ids_list)
+    # Handle length one
+    if num_victims < 2:
+        return ids_list, 0.0
 
     # 2. Setup DEAP
     # Ensure classes exist

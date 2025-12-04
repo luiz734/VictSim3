@@ -200,7 +200,8 @@ class AgentsManager:
         # They are very unlikely to survive even with medical assist
         priority_map = {0: 0, 1: 3, 2: 2, 3: 1}
         for victim_seq, (coords, vital_signals) in self.unified_victims.items():
-            vs_input = np.array(vital_signals[1:11]).reshape(1, -1)
+            feature_names = classifier.feature_names_in_
+            vs_input = pd.DataFrame([vital_signals[1:11]], columns=feature_names)
             tri = classifier.predict(vs_input)[0]
             x, y = coords
             priority = priority_map.get(tri, 0)

@@ -1,222 +1,134 @@
-##  RESCUER AGENT
-### @Author: Tacla (UTFPR)
-### Demo of use of VictimSim
-### Not a complete version of DFS; it comes back prematuraly
-### to the base when it enters into a dead end position
-
-
+import networkx as nx
+import math
 from vs.abstract_agent import AbstAgent
 from vs.constants import VS
 
 
-## Classe que define o Agente Rescuer com um plano fixo
 class Rescuer(AbstAgent):
     def __init__(self, env, config_file):
-        """ 
-        @param env: a reference to an instance of the environment class
-        @param config_file: the absolute path to the agent's config file"""
-
         super().__init__(env, config_file)
-
-        # Specific initialization for the rescuer
-        self.map = None             # explorer will pass the map
-        self.victims = None         # list of found victims
-        self.plan = []              # a list of planned actions
-        self.plan_x = 0             # the x position of the rescuer during the planning phase
-        self.plan_y = 0             # the y position of the rescuer during the planning phase
-        self.plan_visited = set()   # positions already planned to be visited 
-        self.plan_rtime = self.TLIM # the remaing time during the planning phase
-        self.plan_walk_time = 0.0   # previewed time to walk during rescue
-        self.x = 0                  # the current x position of the rescuer when executing the plan
-        self.y = 0                  # the current y position of the rescuer when executing the plan
-
-                
-        # Starts in IDLE state.
-        # It changes to ACTIVE when the map arrives
+        self.map = None
+        self.victims = None
+        self.plan = []
+        self.x = 0
+        self.y = 0
         self.set_state(VS.IDLE)
 
-    
-    def go_save_victims(self, map, victims):
-        """ The explorer sends the map containing the walls and
-        victims' location. The rescuer becomes ACTIVE. From now,
-        the deliberate method is called by the environment"""
-
-        print("\n\n*** R E S C U E R ***")
-        self.map = map
-        print(f"{self.NAME} Map received from the explorer")
-        self.map.draw()
-
-        print()
-        print(f"{self.NAME} List of found victims received from the explorer")
+    def go_save_victims(self, map_data, victims):
+        self.map = map_data
         self.victims = victims
 
-        # print the found victims - you may comment out
-        for seq, data in self.victims.items():
-            coord, vital_signals = data
-            x, y = coord
-            print(f"{self.NAME} Victim {seq} at ({x}, {y}) vs: {vital_signals}")
+        print(f"\n\n*** R E S C U E R ***")
+        self.map.draw()
 
-        #print(f"{self.NAME} time limit to rescue {self.plan_rtime}")
+        print(f"{self.NAME} found victims:")
+        for seq, data in self.victims.items():
+            print(f"{self.NAME} Victim {seq} at {data[0]}")
 
         self.__planner()
-        print(f"{self.NAME} PLAN")
-        i = 1
-        self.plan_x = 0
-        self.plan_y = 0
-        for a in self.plan:
-            self.plan_x += a[0]
-            self.plan_y += a[1]
-            print(f"{self.NAME} {i}) dxy=({a[0]}, {a[1]}) vic: a[2] => at({self.plan_x}, {self.plan_y})")
-            i += 1
 
-        print(f"{self.NAME} END OF PLAN")
-                  
+        print(f"{self.NAME} PLAN GENERATED ({len(self.plan)} steps)")
         self.set_state(VS.ACTIVE)
-        
-    def __depth_search(self, actions_res):
-        enough_time = True
-        ##print(f"\n{self.NAME} actions results: {actions_res}")
-        for i, ar in enumerate(actions_res):
 
-            if ar != VS.CLEAR:
-                ##print(f"{self.NAME} {i} not clear")
-                continue
+    def __build_graph(self):
+        """Builds a directed graph from the explored map data."""
+        G = nx.DiGraph()
 
-            # planning the walk
-            dx, dy = Rescuer.AC_INCR[i]  # get the increments for the possible action
-            target_xy = (self.plan_x + dx, self.plan_y + dy)
+        # Add all nodes
+        for coord in self.map.map_data.keys():
+            G.add_node(coord)
 
-            # checks if the explorer has not visited the target position
-            if not self.map.in_map(target_xy):
-                ##print(f"{self.NAME} target position not explored: {target_xy}")
-                continue
+        # Add edges based on available actions
+        for coord, data in self.map.map_data.items():
+            # data structure: (difficulty, victim_seq, actions_res)
+            actions_res = data[2]
 
-            # checks if the target position is already planned to be visited 
-            if (target_xy in self.plan_visited):
-                ##print(f"{self.NAME} target position already visited: {target_xy}")
-                continue
+            for i, status in enumerate(actions_res):
+                if status == VS.CLEAR:
+                    # Determine neighbor coordinates
+                    dx, dy = Rescuer.AC_INCR[i]
+                    neighbor = (coord[0] + dx, coord[1] + dy)
 
-            # Now, the rescuer can plan to walk to the target position
-            self.plan_x += dx
-            self.plan_y += dy
-            difficulty, vic_seq, next_actions_res = self.map.get((self.plan_x, self.plan_y))
-            #print(f"{self.NAME}: planning to go to ({self.plan_x}, {self.plan_y})")
+                    # Verify neighbor exists in map (it should if status is CLEAR, but safe check)
+                    if self.map.in_map(neighbor):
+                        neighbor_data = self.map.get(neighbor)
+                        difficulty = neighbor_data[0]
 
-            if dx == 0 or dy == 0:
-                step_cost = self.COST_LINE * difficulty
-            else:
-                step_cost = self.COST_DIAG * difficulty
+                        # Calculate weight based on movement type and destination difficulty
+                        # If dx or dy is 0, it's a line move; otherwise diagonal
+                        base_cost = self.COST_LINE if (dx == 0 or dy == 0) else self.COST_DIAG
+                        weight = base_cost * difficulty
 
-            #print(f"{self.NAME}: difficulty {difficulty}, step cost {step_cost}")
-            #print(f"{self.NAME}: accumulated walk time {self.plan_walk_time}, rtime {self.plan_rtime}")
+                        G.add_edge(coord, neighbor, weight=weight)
+        return G
 
-            # check if there is enough remaining time to walk back to the base
-            if self.plan_walk_time + step_cost > self.plan_rtime:
-                enough_time = False
-                #print(f"{self.NAME}: no enough time to go to ({self.plan_x}, {self.plan_y})")
-            
-            if enough_time:
-                # the rescuer has time to go to the next position: update walk time and remaining time
-                self.plan_walk_time += step_cost
-                self.plan_rtime -= step_cost
-                self.plan_visited.add((self.plan_x, self.plan_y))
+    def __dist(self, a, b):
+        return math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
 
-                if vic_seq == VS.NO_VICTIM:
-                    self.plan.append((dx, dy, False)) # walk only
-                    #print(f"{self.NAME}: added to the plan, walk to ({self.plan_x}, {self.plan_y}, False)")
-
-                if vic_seq != VS.NO_VICTIM:
-                    # checks if there is enough remaining time to rescue the victim and come back to the base
-                    if self.plan_rtime - self.COST_FIRST_AID < self.plan_walk_time:
-                        print(f"{self.NAME}: no enough time to rescue the victim")
-                        enough_time = False
-                    else:
-                        self.plan.append((dx, dy, True))
-                        #print(f"{self.NAME}:added to the plan, walk to and rescue victim({self.plan_x}, {self.plan_y}, True)")
-                        self.plan_rtime -= self.COST_FIRST_AID
-
-            # let's see what the agent can do in the next position
-            if enough_time:
-                self.__depth_search(self.map.get((self.plan_x, self.plan_y))[2]) # actions results
-            else:
-                return
-
-        return
-    
     def __planner(self):
-        """ A private method that calculates the walk actions in a OFF-LINE 
-        MANNER to rescue the victims. Further actions may be necessary and 
-        should be added in the deliberate method"""
+        """Generates the rescue plan using A* via NetworkX."""
+        G = self.__build_graph()
+        current_pos = (0, 0)
 
-        """This plan starts at the origin (0, 0) and selects the first possible action
-        in a clockwise manner, starting from the 12 o’clock position.
-        If the next position was visited by the explorer, the rescuer moves there;
-        otherwise, it selects the next possible action in a clockwise manner.
-        For each planned action, the agent calculates the time that will be consumed.
-        When it is time to return to the base, the plan is reversed."""
+        # 1. Visit each victim in the ordered sequence
+        for seq, data in self.victims.items():
+            victim_pos = data[0]
 
+            if current_pos == victim_pos:
+                continue
 
-        # This is an offline trajectory plan. Each element in the list is a pair (dx, dy)
-        # that moves the agent along the x-axis and/or y-axis.
-        # Additionally, each element includes a flag indicating whether a first-aid kit
-        # must be delivered after the move is completed.
-        # For example, (0, 1, True) means the agent moves to (x+0, y+1) and then
-        # delivers a kit because there is a victim at that location.
+            try:
+                # Returns list of nodes: [(x1,y1), (x2,y2), ...]
+                path = nx.astar_path(G, current_pos, victim_pos, heuristic=self.__dist, weight='weight')
 
-        # always start from the base, so it is already visited
-        self.plan_visited.add((0,0)) 
-        difficulty, vic_seq, actions_res = self.map.get((0,0))
-        self.__depth_search(actions_res)
+                # Convert absolute path to relative steps
+                for i in range(1, len(path)):
+                    node = path[i]
+                    prev = path[i - 1]
+                    dx = node[0] - prev[0]
+                    dy = node[1] - prev[1]
 
-        # push actions into the plan to come back to the base
-        if self.plan == []:
-            return
+                    # Mark the very last step of this segment as the rescue step
+                    is_last_step = (i == len(path) - 1)
+                    self.plan.append((dx, dy, is_last_step))
 
-        come_back_plan = []
+                current_pos = victim_pos
 
-        for a in reversed(self.plan):
-            # each line of the plan is a triple: dx, dy, no victim 
-            # - when coming back do not rescue any victim
-            come_back_plan.append((a[0]*-1, a[1]*-1, False))
+            except nx.NetworkXNoPath:
+                print(f"{self.NAME}: No path found from {current_pos} to {victim_pos}")
 
-        self.plan = self.plan + come_back_plan
-        
-        
+        # 2. Return to base
+        base_pos = (0, 0)
+        if current_pos != base_pos:
+            try:
+                path_home = nx.astar_path(G, current_pos, base_pos, heuristic=self.__dist, weight='weight')
+                for i in range(1, len(path_home)):
+                    node = path_home[i]
+                    prev = path_home[i - 1]
+                    dx = node[0] - prev[0]
+                    dy = node[1] - prev[1]
+                    self.plan.append((dx, dy, False))
+            except nx.NetworkXNoPath:
+                print(f"{self.NAME}: No path found to return to base.")
+
     def deliberate(self) -> bool:
-        """ This is the choice of the next action. The simulator calls this
-        method at each reasonning cycle if the agent is ACTIVE.
-        Must be implemented in every agent
-        @return True: there's one or more actions to do
-        @return False: there's no more action to do """
+        if not self.plan:
+            return False
 
-        # No more actions to do
-        if self.plan == []:  # empty list, no more actions to do
-           #input(f"{self.NAME} has finished the plan [ENTER]")
-           return False
-
-        # Takes the first action of the plan (walk action) and removes it from the plan
         dx, dy, there_is_vict = self.plan.pop(0)
-        #print(f"{self.NAME} pop dx: {dx} dy: {dy} vict: {there_is_vict}")
 
-        # Walk - just one step per deliberation
         walked = self.walk(dx, dy)
 
-        # Rescue the victim at the current position
         if walked == VS.EXECUTED:
             self.x += dx
             self.y += dy
-            #print(f"{self.NAME} Walk ok - Rescuer at position ({self.x}, {self.y})")
-            # check if there is a victim at the current position
             if there_is_vict:
-                rescued = self.first_aid() # True when rescued
+                rescued = self.first_aid()
                 if rescued:
                     print(f"{self.NAME} Victim rescued at ({self.x}, {self.y})")
                 else:
-                    print(f"{self.NAME} Plan fail - victim not found at ({self.x}, {self.x})")
+                    print(f"{self.NAME} Plan fail - victim not found at ({self.x}, {self.y})")
         else:
-            print(f"{self.NAME} Plan fail - walk error - agent at ({self.x}, {self.x})")
-            
-        #input(f"{self.NAME} remaining time: {self.get_rtime()} Tecle enter")
+            print(f"{self.NAME} Plan fail - walk error at ({self.x}, {self.y})")
 
         return True
-
