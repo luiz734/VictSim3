@@ -26,10 +26,20 @@ class Rescuer(AbstAgent):
         self.map = None  # reference to the map
         self.victims = None  # reference to the victims
 
+
+        self.log_filename = f"seq_{self.NAME}_1.txt"
+
     def go_save_victims(self, map_data, victims):
         """ Receives the map and victims, builds the graph, and plans the rescue """
         self.map = map_data
         self.victims = victims
+
+        # Clear or create the log file at the start of the mission
+        try:
+            with open(self.log_filename, "w") as f:
+                pass  # Create empty file
+        except IOError as e:
+            print(f"{self.NAME}: Error initializing log file: {e}")
 
         print(f"\n\n*** R E S C U E R ***")
         self.map.draw()
@@ -133,6 +143,23 @@ class Rescuer(AbstAgent):
             except nx.NetworkXNoPath:
                 print(f"{self.NAME}: No path found to return to base.")
 
+    def _log_rescue(self, x, y):
+        victim_id = -1
+        # Identify the victim ID based on current coordinates
+        for seq, data in self.victims.items():
+            if data[0] == (x, y):
+                victim_id = seq
+                break
+
+        if victim_id != -1:
+            try:
+                with open(self.log_filename, "a") as f:
+                    f.write(f"{victim_id}, {x}, {y}\n")
+            except IOError as e:
+                print(f"{self.NAME}: Error writing to log file: {e}")
+        else:
+            print(f"{self.NAME}: Warning - Rescued at ({x},{y}) but ID not found.")
+
     @property
     def deliberate(self) -> bool:
         """ The simulator calls this method at each cycle. """
@@ -177,6 +204,8 @@ class Rescuer(AbstAgent):
                     rescued = self.first_aid()
                     if rescued:
                         print(f"{self.NAME} Victim rescued at ({self.x}, {self.y})")
+                        # Log the rescue to file
+                        self._log_rescue(self.x, self.y)
                     else:
                         print(f"{self.NAME} Plan fail - victim not found at ({self.x}, {self.y})")
             else:
